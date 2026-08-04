@@ -53,4 +53,9 @@ Make narration engaging, conversational, and educational. Visual keywords should
             temperature=0.8
         )
         
-        return Script.from_dict(response_dict)
+        script = Script.from_dict(response_dict)
+        errors = script.validate()
+        if errors:
+            raise ValueError(f"Generated script failed validation: {'; '.join(errors)}")
+        
+        return script

@@ -10,22 +10,26 @@ from script_generation.generator import ScriptGenerator
 from script_generation.schema import Script
 
 
+def make_valid_mock_response(topic="Test Topic", scene_count=6):
+    return {
+        "topic": topic,
+        "scenes": [
+            {
+                "scene_id": i,
+                "narration": "word " * 250,
+                "key_visual_keywords": ["stick figure walking", "globe rotating", "clock ticking"],
+                "facts": ["Fact one", "Fact two", "Fact three"]
+            }
+            for i in range(1, scene_count + 1)
+        ]
+    }
+
+
 def test_generate_script_returns_script_object():
     client = GroqClient(api_key="test-key")
     generator = ScriptGenerator(client)
     
-    mock_response = {
-        "topic": "Ancient Rome",
-        "scenes": [
-            {
-                "scene_id": i,
-                "narration": "This is narration for scene " + str(i) + ". " * 30,
-                "key_visual_keywords": ["stick figure walking", "Roman column"],
-                "facts": ["Rome was founded in 753 BCE", "Julius Caesar was assassinated in 44 BCE"]
-            }
-            for i in range(1, 7)
-        ]
-    }
+    mock_response = make_valid_mock_response(topic="Ancient Rome")
     
     generator.client.generate_json = MagicMock(return_value=mock_response)
     
@@ -35,37 +39,41 @@ def test_generate_script_returns_script_object():
     assert result.topic == "Ancient Rome"
     assert len(result.scenes) == 6
     assert result.scenes[0].scene_id == 1
-    assert len(result.scenes[0].key_visual_keywords) > 0
-    assert len(result.scenes[0].facts) > 0
+    assert len(result.scenes[0].key_visual_keywords) == 3
+    assert len(result.scenes[0].facts) == 3
 
 
 def test_generate_script_passes_system_prompt():
     client = GroqClient(api_key="test-key")
     generator = ScriptGenerator(client)
     
-    mock_response = {
-        "topic": "Test",
-        "scenes": [{"scene_id": i, "narration": "x" * 100, "key_visual_keywords": ["a"], "facts": ["b"]} for i in range(1, 7)]
-    }
-    
-    generator.client.generate_json = MagicMock(return_value=mock_response)
+    generator.client.generate_json = MagicMock(return_value=make_valid_mock_response())
     
     generator.generate_script("Test Topic")
     
     call_kwargs = generator.client.generate_json.call_args
     assert call_kwargs.kwargs['system_prompt'] == generator.system_prompt
+    assert "narration" in generator.system_prompt.lower()
+
+
+def test_generate_script_passes_humanized_prompt():
+    client = GroqClient(api_key="test-key")
+    generator = ScriptGenerator(client)
+    generator.client.generate_json = MagicMock(return_value=make_valid_mock_response())
+    
+    generator.generate_script("Test Topic")
+    
+    prompt = generator.system_prompt.lower()
+    assert "contraction" in prompt
+    assert "conversational" in prompt
+    assert "spoken" in prompt or "narration" in prompt
 
 
 def test_generate_script_requests_json_structure():
     client = GroqClient(api_key="test-key")
     generator = ScriptGenerator(client)
     
-    mock_response = {
-        "topic": "Test",
-        "scenes": [{"scene_id": 1, "narration": "x" * 100, "key_visual_keywords": ["a"], "facts": ["b"]}]
-    }
-    
-    generator.client.generate_json = MagicMock(return_value=mock_response)
+    generator.client.generate_json = MagicMock(return_value=make_valid_mock_response())
     
     generator.generate_script("Test", scene_count=5)
     
@@ -76,3 +84,21 @@ def test_generate_script_requests_json_structure():
     assert "narration" in prompt
     assert "key_visual_keywords" in prompt
     assert "facts" in prompt
+
+
+def test_generate_script_raises_on_invalid_scenes():
+    client = GroqClient(api_key="test-key")
+    generator = ScriptGenerator(client)
+    
+    invalid_response = {
+        "topic": "Bad",
+        "scenes": [
+            {"scene_id": i, "narration": "too short", "key_visual_keywords": [], "facts": []}
+            for i in range(1, 4)
+        ]
+    }
+    
+    generator.client.generate_json = MagicMock(return_value=invalid_response)
+    
+    with pytest.raises(ValueError, match="failed validation"):
+        generator.generate_script("Bad Topic")

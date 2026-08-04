@@ -45,27 +45,33 @@ class Script:
     
     def validate(self) -> List[str]:
         errors = []
+        min_scenes, max_scenes = 5, 7
+        min_keywords, max_keywords = 3, 5
+        min_facts, max_facts = 2, 4
+        min_words, max_words = 200, 400
         
         if not self.topic:
             errors.append("Topic is required")
         
-        if not self.scenes:
-            errors.append("Script must have at least one scene")
-        
-        if len(self.scenes) < 5 or len(self.scenes) > 7:
-            errors.append(f"Script should have 5-7 scenes, got {len(self.scenes)}")
+        if len(self.scenes) < min_scenes or len(self.scenes) > max_scenes:
+            errors.append(f"Script should have {min_scenes}-{max_scenes} scenes, got {len(self.scenes)}")
         
         for i, scene in enumerate(self.scenes):
             if scene.scene_id != i + 1:
                 errors.append(f"Scene {i+1} has incorrect scene_id: {scene.scene_id}")
             
-            if not scene.narration or len(scene.narration.strip()) < 50:
-                errors.append(f"Scene {i+1} narration is too short (min 50 chars for 60-90 sec spoken)")
+            word_count = len(scene.narration.split())
+            if word_count < min_words or word_count > max_words:
+                errors.append(f"Scene {i+1} narration has {word_count} words, expected {min_words}-{max_words} (60-90 sec spoken)")
             
             if not scene.key_visual_keywords:
                 errors.append(f"Scene {i+1} missing key_visual_keywords")
+            elif len(scene.key_visual_keywords) < min_keywords or len(scene.key_visual_keywords) > max_keywords:
+                errors.append(f"Scene {i+1} has {len(scene.key_visual_keywords)} visual keywords, expected {min_keywords}-{max_keywords}")
             
             if not scene.facts:
                 errors.append(f"Scene {i+1} missing facts array")
+            elif len(scene.facts) < min_facts or len(scene.facts) > max_facts:
+                errors.append(f"Scene {i+1} has {len(scene.facts)} facts, expected {min_facts}-{max_facts}")
         
         return errors
