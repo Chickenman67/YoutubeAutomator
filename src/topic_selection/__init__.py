@@ -1,4 +1,6 @@
 from .pool import EvergreenPool, Topic
+from .explainability import ExplainabilityFilter, ExplainabilityVerdict
+from .selector import ApprovedTopic, TopicSelector
 from .trending import (
     TrendingSelector,
     TrendingTopic,
@@ -14,6 +16,10 @@ from .trending import (
 __all__ = [
     "EvergreenPool",
     "Topic",
+    "ExplainabilityFilter",
+    "ExplainabilityVerdict",
+    "ApprovedTopic",
+    "TopicSelector",
     "TrendingSelector",
     "TrendingTopic",
     "build_default_fetchers",
