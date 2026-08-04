@@ -105,7 +105,7 @@ The pipeline is semi-automated: generates complete videos with all assets, queue
   3. Generate voiceover from narration text
   4. Combine animation + voiceover with MoviePy
 - **TTS**: Edge TTS (edge-tts Python library), unlimited free, Microsoft voices
-- **Mid-form assembly**: Stitch all scenes with MoviePy, add transitions (1s fade), export as 1080p MP4
+- **Mid-form assembly**: Stitch all landscape 1920x1080 scene clips with MoviePy, hard cuts between topics (see ADR-0001), export as MP4
 - **Short extraction**: Each scene is already a standalone 60-90s video, export separately as vertical 1080x1920 MP4
 - **Thumbnail generation**: Extract frame from mid-form video (scene 1 at 3s), add text overlay (Pillow), bold sans-serif font, high contrast
 
