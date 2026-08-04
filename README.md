@@ -4,7 +4,7 @@ Automated pipeline for generating daily educational YouTube videos with trending
 
 ## Features
 
-- **Topic selection**: 70% trending topics (Wikipedia/Reddit) + 30% curated evergreen topics, with anti-repeat rotation
+- **Topic selection**: 70% trending topics (Wikipedia pageviews / NewsAPI / GDELT) + 30% curated evergreen topics, with anti-repeat rotation
 - **Script generation**: LLM-generated humanized scripts with scene structure and fact-checking
 - **Video production**: Character-based Manim animations + Edge TTS voiceovers, assembled into mid-form + Short videos
 - **Metadata**: Auto-generated SEO-optimized titles, descriptions, timestamps, and tags
@@ -17,7 +17,7 @@ Automated pipeline for generating daily educational YouTube videos with trending
 - FFmpeg (required by MoviePy and Edge TTS)
 - [Groq API key](https://console.groq.com) for LLM generation (free tier available)
 - [YouTube API credentials](https://console.cloud.google.com/apis/credentials) (free, 10k units/day)
-- Optional: Reddit API credentials for trending topics
+- Optional: NewsAPI free-tier key for an additional trending source
 
 ## Installation
 

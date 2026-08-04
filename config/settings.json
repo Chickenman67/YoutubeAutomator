@@ -3,16 +3,20 @@
     "groq_api_key": "",
     "youtube_client_id": "",
     "youtube_client_secret": "",
-    "reddit_client_id": "",
-    "reddit_client_secret": "",
-    "reddit_user_agent": "YouTubeAutomator/1.0"
+    "newsapi_api_key": ""
   },
   "trending": {
     "wikipedia_threshold_high": 50000,
     "wikipedia_threshold_medium": 20000,
     "wikipedia_threshold_low": 10000,
     "min_topics_target": 3,
-    "max_topics_target": 10
+    "max_topics_target": 10,
+    "pageviews_limit": 50,
+    "recent_changes_limit": 50,
+    "newsapi_query": "science",
+    "newsapi_limit": 50,
+    "gdelt_query": "science|history|space",
+    "gdelt_limit": 50
   },
   "topic_split": {
     "trending_percentage": 0.7,

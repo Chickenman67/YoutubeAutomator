@@ -24,8 +24,7 @@ class Config:
         self.settings['api_keys']['groq_api_key'] = os.getenv('GROQ_API_KEY', '')
         self.settings['api_keys']['youtube_client_id'] = os.getenv('YOUTUBE_CLIENT_ID', '')
         self.settings['api_keys']['youtube_client_secret'] = os.getenv('YOUTUBE_CLIENT_SECRET', '')
-        self.settings['api_keys']['reddit_client_id'] = os.getenv('REDDIT_CLIENT_ID', '')
-        self.settings['api_keys']['reddit_client_secret'] = os.getenv('REDDIT_CLIENT_SECRET', '')
+        self.settings['api_keys']['newsapi_api_key'] = os.getenv('NEWSAPI_API_KEY', '')
     
     def get(self, *keys: str, default: Any = None) -> Any:
         value = self.settings
