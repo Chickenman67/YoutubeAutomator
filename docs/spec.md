@@ -73,8 +73,8 @@ The pipeline is semi-automated: generates complete videos with all assets, queue
 
 ### Topic Selection Module
 
-- **Trending sources**: Wikipedia trending pages API + Reddit r/todayilearned top posts
-- **Dynamic threshold**: Start at 50k Wikipedia views / 5k Reddit upvotes, adjust down (20k/2k, then 10k/1k) if fewer than 3 topics found, adjust up if more than 10 topics found
+- **Trending sources**: Wikipedia pageviews API (primary, no key). Reddit r/todayilearned was dropped because Reddit no longer offers free API keys; the module degrades gracefully to Wikipedia alone if a secondary source is unavailable.
+- **Dynamic threshold**: Start at 50k Wikipedia views, adjust down (20k, then 10k) if fewer than 3 topics found, adjust up if more than 10 topics found
 - **Explainability filter**: LLM quick-check prompt: "Can this be explained in a 5-10 minute educational video with verifiable facts? Yes/No + 1-sentence reason"
 - **70/30 split**: Select 5 trending topics + 2 evergreen topics per week (daily production)
 - **Evergreen rotation**: Track usage timestamps in JSON, exclude topics used within 90 days

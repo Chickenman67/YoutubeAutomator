@@ -11,9 +11,6 @@
     "wikipedia_threshold_high": 50000,
     "wikipedia_threshold_medium": 20000,
     "wikipedia_threshold_low": 10000,
-    "reddit_threshold_high": 5000,
-    "reddit_threshold_medium": 2000,
-    "reddit_threshold_low": 1000,
     "min_topics_target": 3,
     "max_topics_target": 10
   },

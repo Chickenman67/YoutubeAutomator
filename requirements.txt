@@ -23,9 +23,6 @@ google-auth-oauthlib>=1.1.0
 # Wikipedia API
 wikipedia-api>=0.6.0
 
-# Reddit API
-praw>=7.7.0
-
 # Configuration and environment
 python-dotenv>=1.0.0
 
