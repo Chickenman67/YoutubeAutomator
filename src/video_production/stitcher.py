@@ -32,11 +32,23 @@ class MidformStitcher:
         height = height or self.height
         fps = fps or self.fps
 
+        if len(scene_paths) < 2:
+            raise ValueError("need at least two scenes to stitch a mid-form video")
+
         clips = []
         composite = None
         try:
             for scene in scene_paths:
-                clips.append(VideoFileClip(str(scene)))
+                path = Path(scene)
+                if not path.exists():
+                    raise FileNotFoundError(f"scene video not found: {path}")
+                clips.append(VideoFileClip(str(path)))
+
+            for clip in clips:
+                if tuple(clip.size) != (width, height):
+                    raise ValueError(
+                        f"scene size {clip.size} does not match target {(width, height)}"
+                    )
 
             composite = concatenate_videoclips(clips, method="chain")
 

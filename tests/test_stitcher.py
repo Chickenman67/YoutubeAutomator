@@ -65,3 +65,26 @@ def test_stitch_respects_dimension_override(tmp_path):
     )
     assert result.width == 320
     assert result.height == 180
+
+
+def test_stitch_requires_at_least_two_scenes(tmp_path):
+    stitcher = MidformStitcher()
+    with pytest.raises(ValueError):
+        stitcher.stitch([], str(tmp_path / "e.mp4"))
+    with pytest.raises(ValueError):
+        stitcher.stitch([make_scene(tmp_path, "only")], str(tmp_path / "e2.mp4"))
+
+
+def test_stitch_raises_on_missing_scene_file(tmp_path):
+    good = make_scene(tmp_path, "g")
+    with pytest.raises(FileNotFoundError):
+        MidformStitcher().stitch(
+            [good, str(tmp_path / "nope.mp4")], str(tmp_path / "m.mp4")
+        )
+
+
+def test_stitch_rejects_mixed_resolutions(tmp_path):
+    big = make_scene(tmp_path, "big", size=(W, H))
+    small = make_scene(tmp_path, "small", size=(320, 180))
+    with pytest.raises(ValueError):
+        MidformStitcher().stitch([big, small], str(tmp_path / "mix.mp4"))
