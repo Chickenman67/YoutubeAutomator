@@ -105,3 +105,14 @@ def test_get_config_returns_singleton(settings_file):
     c1 = get_config(settings_file)
     c2 = get_config(settings_file)
     assert c1 is c2
+
+
+def test_get_config_distinguishes_paths(settings_file, tmp_path):
+    other = tmp_path / "other.json"
+    other.write_text(json.dumps({
+        "api_keys": {"groq_api_key": "", "youtube_client_id": "", "youtube_client_secret": "", "reddit_client_id": "", "reddit_client_secret": "", "reddit_user_agent": "a"},
+        "trending": {}, "topic_split": {}, "video": {}, "production": {}, "metadata": {}, "upload": {}
+    }))
+    c1 = get_config(settings_file)
+    c2 = get_config(str(other))
+    assert c1 is not c2

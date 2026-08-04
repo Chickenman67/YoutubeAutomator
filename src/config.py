@@ -40,10 +40,10 @@ class Config:
         return self.settings[key]
 
 
-_config_instance = None
+_config_instances = {}
 
 def get_config(settings_path: str = "config/settings.json") -> Config:
-    global _config_instance
-    if _config_instance is None:
-        _config_instance = Config(settings_path)
-    return _config_instance
+    resolved = str(Path(settings_path).resolve())
+    if resolved not in _config_instances:
+        _config_instances[resolved] = Config(settings_path)
+    return _config_instances[resolved]
