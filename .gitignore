@@ -1,0 +1,21 @@
+# Environment
+.env
+venv/
+__pycache__/
+*.pyc
+
+# Python
+*.egg-info/
+.pytest_cache/
+.coverage
+
+# Generated media
+media/
+output/
+*.mp4
+*.wav
+*.mp3
+
+# OS
+.DS_Store
+Thumbs.db
