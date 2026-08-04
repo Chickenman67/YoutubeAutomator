@@ -88,3 +88,19 @@ def test_stitch_rejects_mixed_resolutions(tmp_path):
     small = make_scene(tmp_path, "small", size=(320, 180))
     with pytest.raises(ValueError):
         MidformStitcher().stitch([big, small], str(tmp_path / "mix.mp4"))
+
+
+def test_stitch_cuts_hard_between_scenes(tmp_path):
+    red = make_scene(tmp_path, "red", duration=1.0, color=(255, 0, 0))
+    blue = make_scene(tmp_path, "blue", duration=1.0, color=(0, 0, 255))
+    result = MidformStitcher().stitch([red, blue], str(tmp_path / "cut.mp4"))
+    assert result.duration == pytest.approx(2.0, abs=0.2)
+    with VideoFileClip(str(result.path)) as clip:
+        before = clip.get_frame(0.5)
+        boundary = clip.get_frame(1.0)
+        after = clip.get_frame(1.5)
+    assert before[0][0][0] > before[0][0][2], "frame before boundary should be red"
+    assert after[0][0][2] > after[0][0][0], "frame after boundary should be blue"
+    assert abs(int(boundary[0][0][0]) - int(boundary[0][0][2])) > 60, (
+        "boundary frame must be one scene or the other, not a fade blend"
+    )
