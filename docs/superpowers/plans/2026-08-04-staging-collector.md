@@ -16,7 +16,7 @@
 - Follow repo conventions: dataclass result with `to_dict()`/`to_json()` + `.assets` convenience, injected seams, `Path.mkdir(parents=True, exist_ok=True)`, no comments in production code unless asked.
 - Repo test convention: `sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))` at top of every test file (duplication with `tests/conftest.py` is known and accepted — follow it).
 - Naming scheme (video_id prefix): `{video_id}_midform.mp4`, `{video_id}_short_{NN}.mp4` (zero-padded scene index), `{video_id}_thumbnail.png`, `{video_id}_metadata.json`, `{video_id}_fact_check.json`, `{video_id}_script.json`.
-- Validation order: non-empty `video_id` → `ValueError`; any of script/fact_check/metadata `None` → `ValueError`; any media path missing → `FileNotFoundError`; Short count != Scene count → `ValueError`. No staging directory is created until all validation passes.
+- Validation order: non-empty `video_id` → `ValueError`; any of script/fact_check/metadata `None` → `ValueError`; **media paths missing → `FileNotFoundError` (checked before the short-count check)**; Short count != Scene count → `ValueError`. No staging directory is created until all validation passes.
 
 ---
 
@@ -27,7 +27,7 @@
 - Test: `tests/test_staging.py`
 
 **Interfaces:**
-- Produces: `StagingManifest` dataclass (`video_id`, `directory`, `midform`, `shorts`, `thumbnail`, `metadata`, `fact_check`, `script`; `.assets` property returning every collected path in order) and `StagingCollector.collect(video_id, script, fact_check, metadata, midform_path, short_paths, thumbnail_path, staging_dir=None) -> StagingManifest`.
+- Produces: `StagingManifest` dataclass (`video_id`, `directory`, `midform`, `shorts`, `thumbnail`, `metadata_file`, `fact_check_file`, `script_file`; `.assets` property returning every collected path in order; `to_dict()`/`to_json()` with string paths) and `StagingCollector.collect(video_id, script, fact_check, metadata, midform_path, short_paths, thumbnail_path, staging_dir=None) -> StagingManifest`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -160,9 +160,9 @@ class StagingManifest:
     midform: Path
     shorts: List[Path]
     thumbnail: Path
-    metadata: Path
-    fact_check: Path
-    script: Path
+    metadata_file: Path
+    fact_check_file: Path
+    script_file: Path
 
     @property
     def assets(self) -> List[Path]:
@@ -170,10 +170,25 @@ class StagingManifest:
             self.midform,
             *self.shorts,
             self.thumbnail,
-            self.metadata,
-            self.fact_check,
-            self.script,
+            self.metadata_file,
+            self.fact_check_file,
+            self.script_file,
         ]
+
+    def to_dict(self) -> dict:
+        return {
+            "video_id": self.video_id,
+            "directory": str(self.directory),
+            "midform": str(self.midform),
+            "shorts": [str(p) for p in self.shorts],
+            "thumbnail": str(self.thumbnail),
+            "metadata_file": str(self.metadata_file),
+            "fact_check_file": str(self.fact_check_file),
+            "script_file": str(self.script_file),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2)
 
 
 class StagingCollector:
@@ -191,6 +206,19 @@ class StagingCollector:
         thumbnail_path: str,
         staging_dir: Optional[str] = None,
     ) -> StagingManifest:
+        if not video_id:
+            raise ValueError("video_id is required")
+        if script is None or fact_check is None or metadata is None:
+            raise ValueError("script, fact_check, and metadata are required")
+        sources = [midform_path, *short_paths, thumbnail_path]
+        for path in sources:
+            if not Path(path).exists():
+                raise FileNotFoundError(f"video asset not found: {path}")
+        if len(short_paths) != len(script.scenes):
+            raise ValueError(
+                f"expected {len(script.scenes)} short videos, got {len(short_paths)}"
+            )
+
         base = Path(staging_dir) if staging_dir else self.staging_dir
         directory = base / video_id
         midform = directory / f"{video_id}_midform.mp4"
@@ -204,7 +232,7 @@ class StagingCollector:
         script_file = directory / f"{video_id}_script.json"
 
         directory.mkdir(parents=True, exist_ok=True)
-        for source, dest in zip([midform_path, *short_paths, thumbnail_path], [midform, *shorts, thumbnail]):
+        for source, dest in zip(sources, [midform, *shorts, thumbnail]):
             shutil.copy2(source, dest)
         metadata_file.write_text(metadata.to_json(), encoding="utf-8")
         fact_check_file.write_text(fact_check.to_json(), encoding="utf-8")
@@ -216,9 +244,9 @@ class StagingCollector:
             midform=midform,
             shorts=shorts,
             thumbnail=thumbnail,
-            metadata=metadata_file,
-            fact_check=fact_check_file,
-            script=script_file,
+            metadata_file=metadata_file,
+            fact_check_file=fact_check_file,
+            script_file=script_file,
         )
 ```
 
@@ -309,7 +337,7 @@ Expected: FAIL — Task-1 `collect` has no validation, so `shutil.copy2` raises 
 
 - [ ] **Step 3: Implement**
 
-At the top of `collect`, before computing dest paths: validate in order (a) `if not video_id: raise ValueError("video_id is required")`; (b) `if script is None or fact_check is None or metadata is None: raise ValueError("script, fact_check, and metadata are required")`; (c) `if len(short_paths) != len(script.scenes): raise ValueError(f"expected {len(script.scenes)} short videos, got {len(short_paths)}")`; (d) `for path in [midform_path, *short_paths, thumbnail_path]: if not Path(path).exists(): raise FileNotFoundError(f"video asset not found: {path}")`. Only then `directory.mkdir(...)`.
+At the top of `collect`, before computing dest paths: validate in order (a) `if not video_id: raise ValueError("video_id is required")`; (b) `if script is None or fact_check is None or metadata is None: raise ValueError("script, fact_check, and metadata are required")`; (c) `sources = [midform_path, *short_paths, thumbnail_path]`, then `for path in sources: if not Path(path).exists(): raise FileNotFoundError(f"video asset not found: {path}")`; (d) `if len(short_paths) != len(script.scenes): raise ValueError(f"expected {len(script.scenes)} short videos, got {len(short_paths)}")`. Only then `directory.mkdir(...)`. The media-existence check runs before the short-count check so a genuinely missing file always surfaces as `FileNotFoundError`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -332,19 +360,32 @@ def test_collect_writes_metadata_fact_check_and_script_json(tmp_path):
         "vid-1", make_script("Space"), make_report("Space"), make_metadata("Space"),
         mid, shorts, thumb, staging_dir=str(tmp_path / "staging"),
     )
-    meta = json.loads(manifest.metadata.read_text(encoding="utf-8"))
-    facts = json.loads(manifest.fact_check.read_text(encoding="utf-8"))
-    script = json.loads(manifest.script.read_text(encoding="utf-8"))
+    meta = json.loads(manifest.metadata_file.read_text(encoding="utf-8"))
+    facts = json.loads(manifest.fact_check_file.read_text(encoding="utf-8"))
+    script = json.loads(manifest.script_file.read_text(encoding="utf-8"))
     assert meta["title"] == "Space Explained"
     assert facts["topic"] == "Space"
     assert facts["results"]
     assert script["topic"] == "Space"
     assert len(script["scenes"]) == 6
+
+
+def test_manifest_to_json_lists_asset_paths(tmp_path):
+    mid, shorts, thumb = make_media(tmp_path)
+    manifest = StagingCollector().collect(
+        "vid-1", make_script(), make_report(), make_metadata(), mid, shorts, thumb,
+        staging_dir=str(tmp_path / "staging"),
+    )
+    payload = json.loads(manifest.to_json())
+    assert payload["video_id"] == "vid-1"
+    assert len(payload["shorts"]) == 6
+    assert payload["midform"].endswith("vid-1_midform.mp4")
+    assert Path(payload["directory"]).name == "vid-1"
 ```
 
 - [ ] **Step 2: Run test to verify it passes**
 
-Expected: 9 passed (Task 1 already writes the JSON).
+Expected: 10 passed (Task 1 already writes the JSON; the manifest `to_json()` needs to exist).
 
 ### Task 4: Export from pipeline package
 
@@ -355,6 +396,6 @@ Add `StagingCollector` and `StagingManifest` to the `from .staging import ...` l
 
 ### Task 5: Full suite, review, commit
 
-- [ ] Run: `venv\Scripts\python -m pytest -q` → all tests pass (existing 170 + 9 new).
+- [ ] Run: `venv\Scripts\python -m pytest -q` → all tests pass (existing 170 + 10 new).
 - [ ] Code review of `src/pipeline/staging.py` + `tests/test_staging.py` (standards + spec).
 - [ ] Commit to `master`, push, close #16 with a summary comment (no secrets in messages).

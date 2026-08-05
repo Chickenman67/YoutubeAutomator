@@ -97,7 +97,23 @@ def test_collect_manifest_lists_every_asset(tmp_path):
     assert len(manifest.shorts) == 6
     assert manifest.shorts[0].name == "vid-1_short_01.mp4"
     assert manifest.thumbnail.name == "vid-1_thumbnail.png"
+    assert manifest.metadata_file.name == "vid-1_metadata.json"
+    assert manifest.fact_check_file.name == "vid-1_fact_check.json"
+    assert manifest.script_file.name == "vid-1_script.json"
     assert len(manifest.assets) == 11
+
+
+def test_manifest_to_json_lists_asset_paths(tmp_path):
+    mid, shorts, thumb = make_media(tmp_path)
+    manifest = StagingCollector().collect(
+        "vid-1", make_script(), make_report(), make_metadata(), mid, shorts, thumb,
+        staging_dir=str(tmp_path / "staging"),
+    )
+    payload = json.loads(manifest.to_json())
+    assert payload["video_id"] == "vid-1"
+    assert len(payload["shorts"]) == 6
+    assert payload["midform"].endswith("vid-1_midform.mp4")
+    assert Path(payload["directory"]).name == "vid-1"
 
 
 def test_collect_validates_missing_midform(tmp_path):
@@ -171,9 +187,9 @@ def test_collect_writes_metadata_fact_check_and_script_json(tmp_path):
         "vid-1", make_script("Space"), make_report("Space"), make_metadata("Space"),
         mid, shorts, thumb, staging_dir=str(tmp_path / "staging"),
     )
-    meta = json.loads(manifest.metadata.read_text(encoding="utf-8"))
-    facts = json.loads(manifest.fact_check.read_text(encoding="utf-8"))
-    script = json.loads(manifest.script.read_text(encoding="utf-8"))
+    meta = json.loads(manifest.metadata_file.read_text(encoding="utf-8"))
+    facts = json.loads(manifest.fact_check_file.read_text(encoding="utf-8"))
+    script = json.loads(manifest.script_file.read_text(encoding="utf-8"))
     assert meta["title"] == "Space Explained"
     assert facts["topic"] == "Space"
     assert facts["results"]

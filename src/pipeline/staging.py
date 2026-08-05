@@ -1,3 +1,4 @@
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,9 +16,9 @@ class StagingManifest:
     midform: Path
     shorts: List[Path]
     thumbnail: Path
-    metadata: Path
-    fact_check: Path
-    script: Path
+    metadata_file: Path
+    fact_check_file: Path
+    script_file: Path
 
     @property
     def assets(self) -> List[Path]:
@@ -25,10 +26,25 @@ class StagingManifest:
             self.midform,
             *self.shorts,
             self.thumbnail,
-            self.metadata,
-            self.fact_check,
-            self.script,
+            self.metadata_file,
+            self.fact_check_file,
+            self.script_file,
         ]
+
+    def to_dict(self) -> dict:
+        return {
+            "video_id": self.video_id,
+            "directory": str(self.directory),
+            "midform": str(self.midform),
+            "shorts": [str(p) for p in self.shorts],
+            "thumbnail": str(self.thumbnail),
+            "metadata_file": str(self.metadata_file),
+            "fact_check_file": str(self.fact_check_file),
+            "script_file": str(self.script_file),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2)
 
 
 class StagingCollector:
@@ -50,13 +66,14 @@ class StagingCollector:
             raise ValueError("video_id is required")
         if script is None or fact_check is None or metadata is None:
             raise ValueError("script, fact_check, and metadata are required")
+        sources = [midform_path, *short_paths, thumbnail_path]
+        for path in sources:
+            if not Path(path).exists():
+                raise FileNotFoundError(f"video asset not found: {path}")
         if len(short_paths) != len(script.scenes):
             raise ValueError(
                 f"expected {len(script.scenes)} short videos, got {len(short_paths)}"
             )
-        for path in [midform_path, *short_paths, thumbnail_path]:
-            if not Path(path).exists():
-                raise FileNotFoundError(f"video asset not found: {path}")
 
         base = Path(staging_dir) if staging_dir else self.staging_dir
         directory = base / video_id
@@ -71,9 +88,7 @@ class StagingCollector:
         script_file = directory / f"{video_id}_script.json"
 
         directory.mkdir(parents=True, exist_ok=True)
-        for source, dest in zip(
-            [midform_path, *short_paths, thumbnail_path], [midform, *shorts, thumbnail]
-        ):
+        for source, dest in zip(sources, [midform, *shorts, thumbnail]):
             shutil.copy2(source, dest)
         metadata_file.write_text(metadata.to_json(), encoding="utf-8")
         fact_check_file.write_text(fact_check.to_json(), encoding="utf-8")
@@ -85,7 +100,7 @@ class StagingCollector:
             midform=midform,
             shorts=shorts,
             thumbnail=thumbnail,
-            metadata=metadata_file,
-            fact_check=fact_check_file,
-            script=script_file,
+            metadata_file=metadata_file,
+            fact_check_file=fact_check_file,
+            script_file=script_file,
         )
