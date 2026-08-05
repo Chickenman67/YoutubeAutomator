@@ -1070,3 +1070,16 @@ git commit -m "Add batch upload orchestration for the approved queue (#20)"
 - [ ] Two-axis code review (standards + spec) of the diff vs `fe1c190` (handoff fixed point); spawn 2 parallel general sub-agents.
 - [ ] Commit any review fixes; push to `master`.
 - [ ] Close #20 with a summary comment (no secrets in messages).
+
+---
+
+## Post-review fixes (applied after the two-axis review)
+
+Findings from the spec axis that changed the implementation, each with a TDD test added to `tests/test_uploader.py`:
+
+1. **Scheduled uploads** — spec: "privacy (public/unlisted/scheduled)". Added `publish_at: Optional[str]` to `YouTubeUploader.__init__`. When set, `_upload_video` sends `status.publishAt` and forces `privacyStatus: "private"` (the YouTube API's only valid scheduling combination). Test: `test_upload_schedules_when_publish_at_set`.
+2. **settings.json consumption** — spec: "settings.json contains…". Added `YouTubeUploader.from_config(config, **kwargs)` classmethod that reads `upload.daily_quota_limit`, `upload.upload_cost`, `upload.default_privacy`, `upload.retry_attempts`, and `metadata.youtube_category_id` via `config.get(*keys, default=...)`, with `kwargs` overriding. Tests: `test_from_config_reads_upload_settings`, `test_from_config_kwargs_override_settings`.
+3. **Missing response id** — a 200 response without `id` previously crashed the batch with a raw `KeyError`; now `_upload_video` raises `UploadError("missing video id in response")` so the video fails cleanly. Test: `test_upload_missing_response_id_fails_cleanly`.
+4. **Quota-record failure after success** — if `quota.record` raises after a successful upload, the video was already uploaded; the old code returned `SKIPPED` and left the folder in `approved/`, risking a duplicate upload. Now the record failure is logged and the folder still moves to `uploaded/`. Test: `test_quota_record_failure_still_moves_uploaded`.
+5. **Standards cleanup** — moved the appended `BatchUploadResult`/`MediaFileUpload` imports to the top of `tests/test_uploader.py`, and extracted the duplicated `_skipped(video_id)` helper (the two `SKIPPED "quota exhausted"` constructions).
+

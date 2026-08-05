@@ -80,6 +80,7 @@ class YouTubeUploader:
         quota: Optional[QuotaTracker] = None,
         privacy: str = "public",
         category_id: int = 27,
+        publish_at: Optional[str] = None,
         retries: int = 3,
         upload_cost: int = 1600,
         media_factory: Optional[Callable[[str], object]] = None,
@@ -92,11 +93,26 @@ class YouTubeUploader:
         self.quota = quota or QuotaTracker()
         self.privacy = privacy
         self.category_id = category_id
+        self.publish_at = publish_at
         self.retries = max(1, retries)
         self.upload_cost = upload_cost
         self.media_factory = media_factory or default_media_factory
         self.sleep = sleep or time.sleep
         self.logger = logging.getLogger(__name__)
+
+    @classmethod
+    def from_config(cls, config, **kwargs) -> "YouTubeUploader":
+        params = {
+            "privacy": config.get("upload", "default_privacy", default="public"),
+            "category_id": config.get("metadata", "youtube_category_id", default=27),
+            "retries": config.get("upload", "retry_attempts", default=3),
+            "upload_cost": config.get("upload", "upload_cost", default=1600),
+            "quota": QuotaTracker(
+                daily_limit=config.get("upload", "daily_quota_limit", default=10000)
+            ),
+        }
+        params.update(kwargs)
+        return cls(**params)
 
     def upload_batch(self) -> BatchUploadResult:
         if not self.approved_dir.is_dir():
@@ -130,21 +146,21 @@ class YouTubeUploader:
             )
 
         if self.quota.remaining() < self.upload_cost:
-            return UploadResult(
-                video_id=video_id, status=SKIPPED, error="quota exhausted"
-            )
+            return self._skipped(video_id)
 
         try:
             youtube_id = self._upload_video(video_id, video_file, metadata)
-            self.quota.record(self.upload_cost)
         except QuotaExceededError as exc:
             self.logger.warning("quota exhausted uploading %s", video_id)
-            return UploadResult(
-                video_id=video_id, status=SKIPPED, error="quota exhausted"
-            )
+            return self._skipped(video_id)
         except UploadError as exc:
             self.logger.error("upload failed for %s: %s", video_id, exc)
             return UploadResult(video_id=video_id, status=FAILED, error=str(exc))
+
+        try:
+            self.quota.record(self.upload_cost)
+        except QuotaExceededError as exc:
+            self.logger.warning("could not record quota for %s: %s", video_id, exc)
 
         dest = self.uploaded_dir / video_id
         self.uploaded_dir.mkdir(parents=True, exist_ok=True)
@@ -152,6 +168,11 @@ class YouTubeUploader:
         self.logger.info("uploaded %s as %s", video_id, youtube_id)
         return UploadResult(
             video_id=video_id, status=UPLOADED, youtube_id=youtube_id
+        )
+
+    def _skipped(self, video_id: str) -> UploadResult:
+        return UploadResult(
+            video_id=video_id, status=SKIPPED, error="quota exhausted"
         )
 
     def _upload_video(self, video_id: str, video_file: Path, metadata: Dict) -> str:
@@ -162,14 +183,20 @@ class YouTubeUploader:
                 "tags": metadata.get("tags", []),
                 "categoryId": str(metadata.get("category", self.category_id)),
             },
-            "status": {"privacyStatus": self.privacy},
+            "status": {
+                "privacyStatus": "private" if self.publish_at else self.privacy
+            },
         }
+        if self.publish_at:
+            body["status"]["publishAt"] = self.publish_at
         request = self.client.videos().insert(
             part="snippet,status",
             body=body,
             media_body=self.media_factory(str(video_file)),
         )
         response = self._execute_with_retry(request)
+        if "id" not in response:
+            raise UploadError("missing video id in response")
         return response["id"]
 
     def _execute_with_retry(self, request) -> Dict:

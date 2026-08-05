@@ -4,8 +4,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
-from upload.quota import QuotaTracker
-from upload.uploader import YouTubeUploader, default_media_factory
+from googleapiclient.http import MediaFileUpload
+from upload.quota import QuotaExceededError, QuotaTracker
+from upload.uploader import (
+    BatchUploadResult, UploadResult, YouTubeUploader, default_media_factory,
+)
 
 
 class FakeHttpError(Exception):
@@ -237,11 +240,8 @@ def test_upload_uses_video_id_as_title_fallback(tmp_path):
 def test_default_media_factory_returns_media_upload(tmp_path):
     video = tmp_path / "v.mp4"
     video.write_bytes(b"video")
-    from googleapiclient.http import MediaFileUpload
     media = default_media_factory(str(video))
     assert isinstance(media, MediaFileUpload)
-
-from upload.uploader import BatchUploadResult, UploadResult
 
 
 def test_upload_batch_uploads_all_approved(tmp_path):
@@ -322,3 +322,87 @@ def test_batch_result_to_dict():
     assert [r["video_id"] for r in data["skipped"]] == ["c"]
     assert data["succeeded"][0]["youtube_id"] == "y"
     assert data["failed"][0]["error"] == "boom"
+
+
+def test_upload_schedules_when_publish_at_set(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_approved(queue_root)
+    client = FakeClient({"id": "y1"})
+    uploader = make_uploader(tmp_path, queue_root, client, publish_at="2026-08-10T09:00:00Z")
+    uploader.upload_folder(queue_root / "approved" / "vid-1")
+    status = client.calls[0]["body"]["status"]
+    assert status["privacyStatus"] == "private"
+    assert status["publishAt"] == "2026-08-10T09:00:00Z"
+
+
+def test_upload_missing_response_id_fails_cleanly(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_approved(queue_root)
+    client = FakeClient({})
+    uploader = make_uploader(tmp_path, queue_root, client)
+    result = uploader.upload_folder(queue_root / "approved" / "vid-1")
+    assert result.status == "failed"
+    assert "id" in result.error
+    assert not (queue_root / "uploaded" / "vid-1").exists()
+
+
+def test_quota_record_failure_still_moves_uploaded(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_approved(queue_root)
+
+    class ExplodingTracker(QuotaTracker):
+        def record(self, cost, day=None):
+            raise QuotaExceededError("quota consumed elsewhere")
+
+    client = FakeClient({"id": "y1"})
+    tracker = ExplodingTracker(quota_path=str(tmp_path / "quota.json"))
+    uploader = make_uploader(tmp_path, queue_root, client, quota=tracker)
+    result = uploader.upload_folder(queue_root / "approved" / "vid-1")
+    assert result.status == "uploaded"
+    assert result.youtube_id == "y1"
+    assert (queue_root / "uploaded" / "vid-1").is_dir()
+
+
+class FakeConfig:
+    def __init__(self, mapping):
+        self._m = mapping
+
+    def get(self, *keys, default=None):
+        node = self._m
+        for key in keys:
+            if isinstance(node, dict) and key in node:
+                node = node[key]
+            else:
+                return default
+        return node
+
+
+def test_from_config_reads_upload_settings():
+    config = FakeConfig(
+        {
+            "metadata": {"youtube_category_id": 22},
+            "upload": {
+                "daily_quota_limit": 3200,
+                "upload_cost": 1600,
+                "default_privacy": "unlisted",
+                "retry_attempts": 5,
+            },
+        }
+    )
+    uploader = YouTubeUploader.from_config(config)
+    assert uploader.privacy == "unlisted"
+    assert uploader.category_id == 22
+    assert uploader.retries == 5
+    assert uploader.upload_cost == 1600
+    assert uploader.quota.daily_limit == 3200
+
+
+def test_from_config_kwargs_override_settings():
+    config = FakeConfig(
+        {
+            "upload": {"default_privacy": "unlisted"},
+        }
+    )
+    uploader = YouTubeUploader.from_config(config, privacy="private")
+    assert uploader.privacy == "private"
+
