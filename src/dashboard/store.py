@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List
 
-from werkzeug.utils import secure_filename
-
 
 @dataclass
 class VideoSummary:
@@ -71,28 +69,37 @@ class DashboardStore:
             master = folder / "metadata.json"
             if not master.exists():
                 continue
-            data = json.loads(master.read_text(encoding="utf-8"))
-            videos.append(
-                VideoSummary(
-                    video_id=data["video_id"],
-                    topic=data.get("topic", ""),
-                    title=data.get("metadata", {}).get("title", ""),
-                    thumbnail=data.get("assets", {}).get("thumbnail", ""),
+            try:
+                data = json.loads(master.read_text(encoding="utf-8"))
+                videos.append(
+                    VideoSummary(
+                        video_id=data["video_id"],
+                        topic=data.get("topic", ""),
+                        title=data.get("metadata", {}).get("title", ""),
+                        thumbnail=data.get("assets", {}).get("thumbnail", ""),
+                    )
                 )
-            )
+            except (json.JSONDecodeError, KeyError):
+                continue
         return videos
 
     def get_video(self, video_id: str) -> VideoPackage:
         folder = self.pending_dir / video_id
         if not folder.is_dir():
             raise FileNotFoundError(f"video not found: {video_id}")
-        master = json.loads((folder / "metadata.json").read_text(encoding="utf-8"))
+        try:
+            master = json.loads(
+                (folder / "metadata.json").read_text(encoding="utf-8")
+            )
+        except (json.JSONDecodeError, KeyError):
+            raise FileNotFoundError(f"video not found: {video_id}")
+        script = {}
         script_file = folder / f"{video_id}_script.json"
-        script = (
-            json.loads(script_file.read_text(encoding="utf-8"))
-            if script_file.exists()
-            else {}
-        )
+        if script_file.exists():
+            try:
+                script = json.loads(script_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, KeyError):
+                script = {}
         return VideoPackage(
             video_id=video_id,
             directory=folder,
@@ -114,9 +121,7 @@ class DashboardStore:
         if not source.is_dir():
             raise FileNotFoundError(f"video not found: {video_id}")
         dest = target / video_id
-        dest.mkdir(parents=True, exist_ok=True)
-        for item in source.iterdir():
-            shutil.move(str(item), str(dest / secure_filename(item.name)))
-        source.rmdir()
+        target.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(source), str(dest))
         self.logger.info("moved video %s to %s", video_id, dest)
         return dest

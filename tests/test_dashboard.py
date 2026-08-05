@@ -134,6 +134,13 @@ def test_serve_asset_unknown_video_returns_404(client):
     assert resp.status_code == 404
 
 
+def test_serve_asset_missing_file_returns_404(client):
+    cli, _, _ = client
+    resp = cli.get("/video/vid-1/asset/does_not_exist.mp4")
+    assert resp.status_code == 404
+    assert "error" in resp.get_json()
+
+
 def test_create_app_defaults_to_queue_root(tmp_path, monkeypatch):
     queue_root = tmp_path / "queue"
     seed_pending(tmp_path, queue_root)

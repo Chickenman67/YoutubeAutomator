@@ -1,4 +1,3 @@
-import logging
 from typing import Optional
 
 from flask import Flask, jsonify, send_from_directory
@@ -15,7 +14,6 @@ def create_app(
     CORS(app)
     app.config["JSON_SORT_KEYS"] = False
     store = store or DashboardStore(queue_root=queue_root)
-    logger = logging.getLogger(__name__)
 
     @app.get("/pending")
     def list_pending():
@@ -50,6 +48,8 @@ def create_app(
         folder = store.pending_dir / video_id
         if not folder.is_dir():
             return jsonify({"error": f"video not found: {video_id}"}), 404
+        if not (folder / filename).is_file():
+            return jsonify({"error": f"file not found: {filename}"}), 404
         return send_from_directory(folder, filename)
 
     return app

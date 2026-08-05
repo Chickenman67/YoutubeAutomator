@@ -91,6 +91,27 @@ def test_list_pending_returns_empty_when_dir_missing(tmp_path):
     assert store.list_pending() == []
 
 
+def test_list_pending_skips_malformed_metadata(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_pending(tmp_path, queue_root, video_id="vid-1")
+    bad = queue_root / "pending_review" / "vid-2"
+    bad.mkdir(parents=True, exist_ok=True)
+    (bad / "metadata.json").write_text("{not json", encoding="utf-8")
+    store = DashboardStore(queue_root=str(queue_root))
+    assert [v.video_id for v in store.list_pending()] == ["vid-1"]
+
+
+def test_get_video_corrupt_metadata_raises(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_pending(tmp_path, queue_root, video_id="vid-1")
+    (queue_root / "pending_review" / "vid-1" / "metadata.json").write_text(
+        "{bad", encoding="utf-8"
+    )
+    store = DashboardStore(queue_root=str(queue_root))
+    with pytest.raises(FileNotFoundError):
+        store.get_video("vid-1")
+
+
 def test_get_video_returns_package(tmp_path):
     queue_root = tmp_path / "queue"
     seed_pending(tmp_path, queue_root)
