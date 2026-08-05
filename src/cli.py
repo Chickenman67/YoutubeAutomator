@@ -2,6 +2,8 @@ import argparse
 import sys
 
 from config import get_config
+from upload.auth import AuthError, build_client, get_credentials
+from upload.uploader import YouTubeUploader
 
 
 def build_parser():
@@ -16,7 +18,10 @@ def build_parser():
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     subparsers.add_parser('generate', help='Generate scripts for new videos')
     subparsers.add_parser('dashboard', help='Start the review dashboard web interface')
-    subparsers.add_parser('upload', help='Upload approved videos to YouTube')
+    upload = subparsers.add_parser('upload', help='Upload approved videos to YouTube')
+    upload.add_argument('--queue-root', default=None)
+    upload.add_argument('--publish-at', default=None, help='ISO datetime to schedule publication (privacy forced to private)')
+    upload.add_argument('--token-path', default=None)
     subparsers.add_parser('config', help='Show current configuration')
     return parser
 
@@ -70,4 +75,19 @@ def cmd_dashboard(config, args):
 
 
 def cmd_upload(config, args):
+    token_path = args.token_path or config.get("paths", "youtube_token", default="config/youtube_token.json")
+    client_id = config.get("api_keys", "youtube_client_id", default="") or ""
+    client_secret = config.get("api_keys", "youtube_client_secret", default="") or ""
+    try:
+        credentials = get_credentials(token_path, client_id, client_secret)
+    except AuthError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    client = build_client(credentials)
+    queue_root = args.queue_root or config.get("paths", "queue_root", default="queue")
+    uploader = YouTubeUploader.from_config(
+        config, client=client, queue_root=queue_root, publish_at=args.publish_at
+    )
+    batch = uploader.upload_batch()
+    print(batch.to_json())
     return 0

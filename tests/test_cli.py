@@ -54,3 +54,96 @@ def test_config_command_prints_loaded_settings(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "Configuration loaded successfully" in out
     assert "[Set]" in out
+
+
+class FakeBatch:
+    def to_json(self):
+        return json.dumps({"succeeded": [], "failed": [], "skipped": []})
+
+
+class FakeUploader:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+
+    @classmethod
+    def from_config(cls, config, **kwargs):
+        return cls(**kwargs)
+
+    def upload_batch(self):
+        return FakeBatch()
+
+
+def test_upload_builds_client_and_runs_batch(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    monkeypatch.setenv("YOUTUBE_CLIENT_ID", "test-id")
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", "test-secret")
+    captured = {}
+
+    def fake_get_credentials(token_path, client_id, client_secret):
+        captured["token_path"] = token_path
+        captured["client_id"] = client_id
+        captured["client_secret"] = client_secret
+        return "creds"
+
+    def fake_build_client(credentials):
+        captured["credentials"] = credentials
+        return "client"
+
+    monkeypatch.setattr(cli, "get_credentials", fake_get_credentials)
+    monkeypatch.setattr(cli, "build_client", fake_build_client)
+    monkeypatch.setattr(cli, "YouTubeUploader", FakeUploader)
+
+    assert main(["--config", settings, "upload"]) == 0
+    assert captured["token_path"] == "config/youtube_token.json"
+    assert captured["client_id"] == "test-id"
+    assert captured["client_secret"] == "test-secret"
+    assert captured["credentials"] == "creds"
+    assert "succeeded" in capsys.readouterr().out
+
+
+def test_upload_forwards_queue_root_and_publish_at(tmp_path, monkeypatch):
+    settings = write_settings(tmp_path)
+    monkeypatch.setenv("YOUTUBE_CLIENT_ID", "test-id")
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", "test-secret")
+    captured = {}
+
+    def fake_get_credentials(token_path, client_id, client_secret):
+        return "creds"
+
+    monkeypatch.setattr(cli, "get_credentials", fake_get_credentials)
+    monkeypatch.setattr(cli, "build_client", lambda creds: "client")
+
+    class FakeUploader2:
+        def __init__(self, **kwargs):
+            captured["kwargs"] = kwargs
+
+        @classmethod
+        def from_config(cls, config, **kwargs):
+            return cls(**kwargs)
+
+        def upload_batch(self):
+            return FakeBatch()
+
+    monkeypatch.setattr(cli, "YouTubeUploader", FakeUploader2)
+    assert main([
+        "--config", settings, "upload",
+        "--queue-root", "my/queue",
+        "--publish-at", "2026-08-10T09:00:00Z",
+    ]) == 0
+    kwargs = captured["kwargs"]
+    assert kwargs["queue_root"] == "my/queue"
+    assert kwargs["publish_at"] == "2026-08-10T09:00:00Z"
+    assert kwargs["client"] == "client"
+
+
+def test_upload_auth_error_returns_1(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    monkeypatch.setenv("YOUTUBE_CLIENT_ID", "test-id")
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", "test-secret")
+
+    def fail(token_path, client_id, client_secret):
+        raise cli.AuthError("no stored token")
+
+    monkeypatch.setattr(cli, "get_credentials", fail)
+    assert main(["--config", settings, "upload"]) == 1
+    assert "no stored token" in capsys.readouterr().err
