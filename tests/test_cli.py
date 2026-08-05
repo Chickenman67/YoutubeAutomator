@@ -190,3 +190,55 @@ def test_dashboard_flags_and_no_browser(tmp_path, monkeypatch, capsys):
     ]) == 0
     assert fake_app.run_kwargs == {"host": "0.0.0.0", "port": 8000}
     assert opened == []
+
+
+class FakeMachine:
+    def __init__(self, topics=(), raise_on=None):
+        self.topics = list(topics)
+        self.raise_on = raise_on
+        self.ran = []
+
+    def select_topics(self):
+        return self.topics
+
+    def run_video(self, topic):
+        self.ran.append(topic)
+        if self.raise_on:
+            raise self.raise_on
+        return FakeResult(topic)
+
+
+class FakeResult:
+    def __init__(self, topic):
+        self.topic = topic
+
+    def to_json(self):
+        return json.dumps({"topic": self.topic, "status": "completed"})
+
+
+def test_generate_with_explicit_topic(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    machine = FakeMachine(topics=["a", "b", "c"])
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+
+    assert main(["--config", settings, "generate", "--topic", "Space"]) == 0
+    assert machine.ran == ["Space"]
+    assert '"topic": "Space"' in capsys.readouterr().out
+
+
+def test_generate_selects_topics_respecting_count(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    machine = FakeMachine(topics=["a", "b", "c"])
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+
+    assert main(["--config", settings, "generate", "--count", "2"]) == 0
+    assert machine.ran == ["a", "b"]
+
+
+def test_generate_exception_returns_1(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    machine = FakeMachine(topics=["a"], raise_on=RuntimeError("boom"))
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+
+    assert main(["--config", settings, "generate"]) == 1
+    assert "boom" in capsys.readouterr().err

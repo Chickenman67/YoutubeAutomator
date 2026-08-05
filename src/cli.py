@@ -18,7 +18,9 @@ def build_parser():
         help='Path to settings.json configuration file'
     )
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    subparsers.add_parser('generate', help='Generate scripts for new videos')
+    generate = subparsers.add_parser('generate', help='Generate scripts for new videos')
+    generate.add_argument('--topic', default=None, help='Generate for a specific topic instead of selecting')
+    generate.add_argument('--count', type=int, default=1, help='Number of topics to process when selecting')
     dashboard = subparsers.add_parser('dashboard', help='Start the review dashboard web interface')
     dashboard.add_argument('--queue-root', default=None)
     dashboard.add_argument('--host', default='127.0.0.1')
@@ -73,7 +75,34 @@ def main(argv=None):
 
 
 def cmd_generate(config, args):
+    machine = build_state_machine(config)
+    if args.topic:
+        topics = [args.topic]
+    else:
+        topics = machine.select_topics()[: args.count]
+    for topic in topics:
+        result = machine.run_video(topic)
+        print(result.to_json())
     return 0
+
+
+def build_state_machine(config):
+    from fact_check.fact_checker import FactChecker
+    from llm import GroqClient
+    from metadata.generator import MetadataGenerator
+    from pipeline.state_machine import PipelineStateMachine
+    from script_generation.generator import ScriptGenerator
+    from topic_selection.selector import TopicSelector
+
+    api_key = config.get("api_keys", "groq_api_key", default="") or ""
+    groq = GroqClient(api_key=api_key) if api_key else None
+    selector = TopicSelector.from_config(config)
+    return PipelineStateMachine(
+        topic_selector=selector,
+        script_generator=ScriptGenerator(groq),
+        fact_checker=FactChecker(),
+        metadata_generator=MetadataGenerator(groq),
+    )
 
 
 def cmd_dashboard(config, args):
