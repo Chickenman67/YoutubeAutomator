@@ -1,3 +1,4 @@
+import json
 import sys
 from pathlib import Path
 
@@ -158,6 +159,15 @@ def test_run_video_calls_stages_in_order():
     assert machine.script_generator.called_with == "Order Topic"
     assert machine.fact_checker.called_with is script
     assert machine.metadata_generator.called_with is script
+
+
+def test_result_to_json():
+    script = make_script("Json Topic")
+    machine = make_machine(script=script, report=make_report("Json Topic"), metadata=make_metadata("Json Topic"))
+    payload = json.loads(machine.run_video("Json Topic").to_json())
+    assert payload["topic"] == "Json Topic"
+    assert payload["stage"] == "metadata_generated"
+    assert payload["metadata"]["title"] == "Json Topic Explained"
 
 
 def test_run_video_fails_at_script_generation():

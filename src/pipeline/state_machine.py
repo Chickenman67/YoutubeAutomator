@@ -1,11 +1,14 @@
+import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from fact_check.fact_checker import FactCheckReport
-from metadata.generator import Metadata
+from fact_check.fact_checker import FactChecker, FactCheckReport
+from metadata.generator import Metadata, MetadataGenerator
+from script_generation.generator import ScriptGenerator
 from script_generation.schema import Script
+from topic_selection.selector import TopicSelector
 
 
 class Stage(Enum):
@@ -41,21 +44,23 @@ class PipelineResult:
             data["error"] = self.error
         return data
 
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2)
+
 
 class PipelineStateMachine:
     def __init__(
         self,
-        topic_selector,
-        script_generator,
-        fact_checker,
-        metadata_generator,
-        logger=None,
+        topic_selector: TopicSelector,
+        script_generator: ScriptGenerator,
+        fact_checker: FactChecker,
+        metadata_generator: MetadataGenerator,
     ):
         self.topic_selector = topic_selector
         self.script_generator = script_generator
         self.fact_checker = fact_checker
         self.metadata_generator = metadata_generator
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
     def select_topics(self) -> List[str]:
         try:
@@ -71,21 +76,21 @@ class PipelineStateMachine:
         try:
             script = self.script_generator.generate_script(topic)
         except Exception as exc:
-            return self._fail(result, Stage.TOPIC_SELECTED, "script generation", exc)
+            return self._fail(result, "script generation", exc)
         result.script = script
         result.stage = Stage.SCRIPT_GENERATED
 
         try:
             fact_check = self.fact_checker.check_script(script)
         except Exception as exc:
-            return self._fail(result, Stage.SCRIPT_GENERATED, "fact-checking", exc)
+            return self._fail(result, "fact-checking", exc)
         result.fact_check = fact_check
         result.stage = Stage.FACTS_CHECKED
 
         try:
             metadata = self.metadata_generator.generate_metadata(script)
         except Exception as exc:
-            return self._fail(result, Stage.FACTS_CHECKED, "metadata generation", exc)
+            return self._fail(result, "metadata generation", exc)
         result.metadata = metadata
         result.stage = Stage.METADATA_GENERATED
         result.status = "completed"
@@ -99,11 +104,8 @@ class PipelineStateMachine:
             results.append(self.run_video(topic))
         return results
 
-    def _fail(
-        self, result: PipelineResult, stage: Stage, label: str, exc: Exception
-    ) -> PipelineResult:
+    def _fail(self, result: PipelineResult, label: str, exc: Exception) -> PipelineResult:
         result.status = "failed"
-        result.stage = stage
         result.error = f"{label} failed: {exc}"
         self.logger.warning("[%s] %s", result.topic, result.error)
         return result

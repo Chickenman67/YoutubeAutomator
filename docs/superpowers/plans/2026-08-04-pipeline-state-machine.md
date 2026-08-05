@@ -27,7 +27,7 @@
 - Test: `tests/test_state_machine.py`
 
 **Interfaces:**
-- Produces: `Stage` enum, `PipelineResult` dataclass (`topic`, `stage`, `status`, `script`, `fact_check`, `metadata`, `error`; `.completed` property; `to_dict()`), and `PipelineStateMachine.run_video(topic) -> PipelineResult`.
+- Produces: `Stage` enum, `PipelineResult` dataclass (`topic`, `stage`, `status`, `script`, `fact_check`, `metadata`, `error`; `.completed` property; `to_dict()`; `to_json()`), and `PipelineStateMachine.run_video(topic) -> PipelineResult`. Constructor seams are typed (`TopicSelector`, `ScriptGenerator`, `FactChecker`, `MetadataGenerator`); logging uses the module logger (no logger seam).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -166,14 +166,17 @@ Expected: FAIL with `ModuleNotFoundError: No module named 'pipeline.state_machin
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
+import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from fact_check.fact_checker import FactCheckReport
-from metadata.generator import Metadata
+from fact_check.fact_checker import FactChecker, FactCheckReport
+from metadata.generator import Metadata, MetadataGenerator
+from script_generation.generator import ScriptGenerator
 from script_generation.schema import Script
+from topic_selection.selector import TopicSelector
 
 
 class Stage(Enum):
@@ -209,14 +212,23 @@ class PipelineResult:
             data["error"] = self.error
         return data
 
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2)
+
 
 class PipelineStateMachine:
-    def __init__(self, topic_selector, script_generator, fact_checker, metadata_generator, logger=None):
+    def __init__(
+        self,
+        topic_selector: TopicSelector,
+        script_generator: ScriptGenerator,
+        fact_checker: FactChecker,
+        metadata_generator: MetadataGenerator,
+    ):
         self.topic_selector = topic_selector
         self.script_generator = script_generator
         self.fact_checker = fact_checker
         self.metadata_generator = metadata_generator
-        self.logger = logger or logging.getLogger(__name__)
+        self.logger = logging.getLogger(__name__)
 
     def run_video(self, topic: str) -> PipelineResult:
         result = PipelineResult(topic=topic, stage=Stage.TOPIC_SELECTED, status="running")
@@ -294,7 +306,7 @@ Expected: FAIL — exceptions propagate (test errors) because Task-1 `run_video`
 
 - [ ] **Step 3: Implement**
 
-Wrap each stage in its own `try/except Exception`; on failure call a `_fail(result, stage, label, exc)` helper that sets `status="failed"`, `error=f"{label} failed: {exc}"`, logs `logger.warning("[%s] %s", result.topic, result.error)` and returns the result. Labels: `"script generation"`, `"fact-checking"`, `"metadata generation"`.
+Wrap each stage in its own `try/except Exception`; on failure call a `_fail(result, label, exc)` helper that sets `status="failed"`, `error=f"{label} failed: {exc}"`, logs `logger.warning("[%s] %s", result.topic, result.error)` and returns the result. The result's `stage` stays at the last completed stage (set before the failing call). Labels: `"script generation"`, `"fact-checking"`, `"metadata generation"`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
