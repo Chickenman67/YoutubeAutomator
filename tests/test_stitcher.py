@@ -67,12 +67,27 @@ def test_stitch_respects_dimension_override(tmp_path):
     assert result.height == 180
 
 
+def test_stitch_respects_fps_override(tmp_path):
+    size = (320, 180)
+    paths = [
+        make_scene(tmp_path, "f1", size=size),
+        make_scene(tmp_path, "f2", size=size),
+    ]
+    result = MidformStitcher().stitch(
+        paths, str(tmp_path / "f.mp4"), width=320, height=180, fps=12
+    )
+    with VideoFileClip(str(result.path)) as clip:
+        assert int(clip.fps) == 12
+
+
 def test_stitch_requires_at_least_two_scenes(tmp_path):
     stitcher = MidformStitcher()
     with pytest.raises(ValueError):
         stitcher.stitch([], str(tmp_path / "e.mp4"))
     with pytest.raises(ValueError):
         stitcher.stitch([make_scene(tmp_path, "only")], str(tmp_path / "e2.mp4"))
+    assert not (tmp_path / "e.mp4").exists()
+    assert not (tmp_path / "e2.mp4").exists()
 
 
 def test_stitch_raises_on_missing_scene_file(tmp_path):
@@ -81,6 +96,7 @@ def test_stitch_raises_on_missing_scene_file(tmp_path):
         MidformStitcher().stitch(
             [good, str(tmp_path / "nope.mp4")], str(tmp_path / "m.mp4")
         )
+    assert not (tmp_path / "m.mp4").exists()
 
 
 def test_stitch_rejects_mixed_resolutions(tmp_path):
@@ -88,6 +104,7 @@ def test_stitch_rejects_mixed_resolutions(tmp_path):
     small = make_scene(tmp_path, "small", size=(320, 180))
     with pytest.raises(ValueError):
         MidformStitcher().stitch([big, small], str(tmp_path / "mix.mp4"))
+    assert not (tmp_path / "mix.mp4").exists()
 
 
 def test_stitch_cuts_hard_between_scenes(tmp_path):

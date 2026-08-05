@@ -101,12 +101,12 @@ The pipeline is semi-automated: generates complete videos with all assets, queue
 - **Visual style**: Stick figures + simple geometric icons, black-and-white or minimal color
 - **Scene rendering**: For each scene:
   1. Generate Manim animation script from `key_visual_keywords`
-  2. Render scene to video file (1080x1920 vertical for Shorts compatibility)
+  2. Render scene to video file twice: 1920x1080 landscape for the mid-form master and 1080x1920 vertical for Shorts compatibility (see ADR-0001)
   3. Generate voiceover from narration text
   4. Combine animation + voiceover with MoviePy
 - **TTS**: Edge TTS (edge-tts Python library), unlimited free, Microsoft voices
 - **Mid-form assembly**: Stitch all landscape 1920x1080 scene clips with MoviePy, hard cuts between topics (see ADR-0001), export as MP4
-- **Short extraction**: Each scene is already a standalone 60-90s video, export separately as vertical 1080x1920 MP4
+- **Short extraction**: Each scene is rendered separately as a native vertical 1080x1920 MP4 Short (re-composed from the same keywords/narration, never cropped from the landscape master)
 - **Thumbnail generation**: Extract frame from mid-form video (scene 1 at 3s), add text overlay (Pillow), bold sans-serif font, high contrast
 
 ### Metadata Generation Module
