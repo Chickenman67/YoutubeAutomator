@@ -19,3 +19,10 @@ output/
 # OS
 .DS_Store
 Thumbs.db
+
+# Browser automation (playwright MCP)
+.playwright-mcp/
+
+# YouTube credentials and upload state
+config/youtube_token.json
+config/quota.json
