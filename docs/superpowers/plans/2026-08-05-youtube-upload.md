@@ -468,6 +468,7 @@ class FakeRequest:
         self._client = client
 
     def execute(self):
+        self._client.executes += 1
         item = self._client._responses.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -477,6 +478,7 @@ class FakeRequest:
 class FakeClient:
     def __init__(self, *responses):
         self.calls = []
+        self.executes = 0
         self._responses = list(responses)
 
     def videos(self):
@@ -603,7 +605,8 @@ def test_upload_retries_on_transient_error(tmp_path):
     uploader = make_uploader(tmp_path, queue_root, client, retries=3)
     result = uploader.upload_folder(queue_root / "approved" / "vid-1")
     assert result.status == "uploaded"
-    assert len(client.calls) == 3
+    assert len(client.calls) == 1
+    assert client.executes == 3
 
 
 def test_upload_retries_on_connection_error(tmp_path):
@@ -613,7 +616,7 @@ def test_upload_retries_on_connection_error(tmp_path):
     uploader = make_uploader(tmp_path, queue_root, client, retries=3)
     result = uploader.upload_folder(queue_root / "approved" / "vid-1")
     assert result.status == "uploaded"
-    assert len(client.calls) == 2
+    assert client.executes == 2
 
 
 def test_upload_fails_after_retries_exhausted(tmp_path):
@@ -624,7 +627,7 @@ def test_upload_fails_after_retries_exhausted(tmp_path):
     result = uploader.upload_folder(queue_root / "approved" / "vid-1")
     assert result.status == "failed"
     assert "3 attempts" in result.error
-    assert len(client.calls) == 3
+    assert client.executes == 3
     assert not (queue_root / "uploaded" / "vid-1").exists()
 
 
@@ -635,7 +638,7 @@ def test_upload_fatal_error_does_not_retry(tmp_path):
     uploader = make_uploader(tmp_path, queue_root, client, retries=3)
     result = uploader.upload_folder(queue_root / "approved" / "vid-1")
     assert result.status == "failed"
-    assert len(client.calls) == 1
+    assert client.executes == 1
 
 
 def test_api_quota_exceeded_marks_skipped(tmp_path):
@@ -646,7 +649,7 @@ def test_api_quota_exceeded_marks_skipped(tmp_path):
     result = uploader.upload_folder(queue_root / "approved" / "vid-1")
     assert result.status == "skipped"
     assert result.error == "quota exhausted"
-    assert len(client.calls) == 1
+    assert client.executes == 1
     assert not (queue_root / "uploaded" / "vid-1").exists()
 
 
