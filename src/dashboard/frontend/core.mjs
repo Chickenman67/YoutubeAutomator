@@ -19,7 +19,7 @@ export function renderList(videos) {
     .map(
       (v) => `
     <article class="video-card" data-id="${escapeHtml(v.video_id)}">
-      <label class="select"><input type="checkbox" data-select="${escapeHtml(v.video_id)}"></label>
+      <label class="select"><input type="checkbox" data-select="${escapeHtml(v.video_id)}" value="${escapeHtml(v.video_id)}"></label>
       <img class="thumb" src="${assetUrl(v.video_id, v.thumbnail)}" alt="">
       <div class="summary">
         <h2>${escapeHtml(v.title)}</h2>
@@ -36,24 +36,48 @@ export function renderDetail(v) {
   const shorts = (v.assets?.shorts || [])
     .map((name) => `<li><video controls src="${assetUrl(v.video_id, name)}"></video></li>`)
     .join('');
+
+  const meta = v.metadata || {};
+  const metaTitle = meta.title != null ? `<p class="meta-title">${escapeHtml(meta.title)}</p>` : '';
+  const metaDesc =
+    meta.description != null ? `<p class="meta-desc">${escapeHtml(meta.description)}</p>` : '';
+  const metaCategory =
+    meta.category != null ? `<p class="meta-category">Category: ${escapeHtml(String(meta.category))}</p>` : '';
+  const tags = (meta.tags || [])
+    .map((t) => `<li class="tag">${escapeHtml(t)}</li>`)
+    .join('');
+
+  const scenes = (v.script?.scenes || [])
+    .map((s) => {
+      const keywords = (s.key_visual_keywords || [])
+        .map((k) => `<span class="kw">${escapeHtml(k)}</span>`)
+        .join(' ');
+      const facts = (s.facts || [])
+        .map((f) => `<li>${escapeHtml(f)}</li>`)
+        .join('');
+      return `<li><strong>Scene ${escapeHtml(String(s.scene_id))}</strong>${keywords ? `<div class="keywords">${keywords}</div>` : ''}<p>${escapeHtml(s.narration)}</p>${facts ? `<ul class="scene-facts">${facts}</ul>` : ''}</li>`;
+    })
+    .join('');
+
   const facts = (v.fact_check?.results || [])
     .map(
       (r) =>
         `<li class="fact ${r.flagged ? 'flagged' : ''}">${escapeHtml(r.confidence)}: ${escapeHtml(r.claim)}</li>`,
     )
     .join('');
-  const scenes = (v.script?.scenes || [])
+  const lowConf = (v.fact_check?.low_confidence || [])
     .map(
-      (s) =>
-        `<li><strong>Scene ${s.scene_id}</strong><p>${escapeHtml(s.narration)}</p></li>`,
+      (r) =>
+        `<li class="fact flagged">${escapeHtml(r.confidence)}: ${escapeHtml(r.claim)}</li>`,
     )
     .join('');
+
   return `
     <div class="detail">
       <video class="player" controls src="${midform}"></video>
-      <section><h3>Metadata</h3><p>${escapeHtml(v.metadata?.description || '')}</p></section>
+      <section><h3>Metadata</h3>${metaTitle}${metaDesc}${metaCategory}${tags ? `<ul class="tags">${tags}</ul>` : ''}</section>
       <section><h3>Script</h3><ul>${scenes}</ul></section>
-      <section><h3>Fact Check</h3><ul>${facts}</ul></section>
+      <section><h3>Fact Check</h3><ul>${facts}</ul>${lowConf ? `<h3>Low Confidence</h3><ul>${lowConf}</ul>` : ''}</section>
       <section><h3>Shorts</h3><ul>${shorts}</ul></section>
       <div class="actions">
         <button data-decision="approve" type="button">Approve</button>

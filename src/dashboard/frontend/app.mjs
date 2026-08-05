@@ -32,7 +32,7 @@ async function refresh() {
 function bindList() {
   app.querySelectorAll('[data-select]').forEach((cb) => {
     cb.addEventListener('change', () => {
-      selection = selection.toggle(cb.value);
+      selection = selection.toggle(cb.dataset.select);
       updateCount();
     });
   });
@@ -75,6 +75,7 @@ async function bulk(action) {
       console.error(err);
     }
   }
+  selection = new Selection();
   paint();
 }
 

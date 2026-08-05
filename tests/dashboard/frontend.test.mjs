@@ -25,6 +25,7 @@ test('renderList renders a card per video with select and thumbnail', () => {
   ]);
   assert.match(html, /data-id="v1"/);
   assert.match(html, /data-select="v1"/);
+  assert.match(html, /value="v1"/);
   assert.match(html, /\/video\/v1\/asset\/v1_thumbnail\.png/);
   assert.match(html, /Space Explained/);
 });
@@ -103,4 +104,56 @@ test('renderDetail escapes untrusted claim text', () => {
   };
   assert.match(renderDetail(v), /&lt;script&gt;/);
   assert.doesNotMatch(renderDetail(v), /<script>alert/);
+});
+
+test('renderDetail shows full metadata (title, tags, category)', () => {
+  const v = {
+    video_id: 'v1',
+    metadata: { title: 'Space Explained', description: 'desc', tags: ['space', 'science'], category: 27 },
+    fact_check: { results: [] },
+    script: { scenes: [] },
+    assets: { midform: 'v1_midform.mp4', shorts: [], thumbnail: 'v1_thumbnail.png' },
+  };
+  const html = renderDetail(v);
+  assert.match(html, />Space Explained</);
+  assert.match(html, /Category: 27/);
+  assert.match(html, />space</);
+  assert.match(html, />science</);
+});
+
+test('renderDetail shows per-scene facts and keywords', () => {
+  const v = {
+    video_id: 'v1',
+    metadata: {},
+    fact_check: { results: [] },
+    script: { scenes: [{ scene_id: 1, narration: 'n', facts: ['fact a', 'fact b'], key_visual_keywords: ['globe', 'stick'] }] },
+    assets: { midform: 'v1_midform.mp4', shorts: [], thumbnail: 'v1_thumbnail.png' },
+  };
+  const html = renderDetail(v);
+  assert.match(html, />fact a</);
+  assert.match(html, />fact b</);
+  assert.match(html, />globe</);
+  assert.match(html, />stick</);
+});
+
+test('renderDetail shows a low-confidence section', () => {
+  const v = {
+    video_id: 'v1',
+    metadata: {},
+    fact_check: { results: [], low_confidence: [{ claim: 'dubious', confidence: 'low', flagged: true }] },
+    script: { scenes: [] },
+    assets: { midform: 'v1_midform.mp4', shorts: [], thumbnail: 'v1_thumbnail.png' },
+  };
+  assert.match(renderDetail(v), /Low Confidence/);
+});
+
+test('renderDetail escapes scene ids', () => {
+  const v = {
+    video_id: 'v1',
+    metadata: {},
+    fact_check: { results: [] },
+    script: { scenes: [{ scene_id: '<x>', narration: 'n', facts: [], key_visual_keywords: [] }] },
+    assets: { midform: 'v1_midform.mp4', shorts: [], thumbnail: 'v1_thumbnail.png' },
+  };
+  assert.match(renderDetail(v), /&lt;x&gt;/);
 });

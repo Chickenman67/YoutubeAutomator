@@ -18,6 +18,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 24px; }
 .topic { margin: 0; color: var(--muted); }
 .detail { grid-column: 1 / -1; border-top: 1px solid var(--border); padding-top: 12px; }
 .detail ul { padding-left: 20px; }
+.meta-title { font-weight: 600; margin: 0 0 4px; }
+.meta-desc, .meta-category { margin: 0 0 4px; color: var(--muted); }
+.tags, .scene-facts { margin: 4px 0; }
+.tag { display: inline-block; margin: 0 4px 4px 0; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 0.8rem; color: var(--muted); }
+.keywords { margin: 4px 0; font-size: 0.85rem; color: var(--muted); }
+.kw { margin-right: 6px; }
 .fact.flagged { color: var(--danger); }
 .actions { display: flex; gap: 8px; margin-top: 12px; }
 [data-decision="approve"] { border-color: var(--accent); color: var(--accent); }
