@@ -147,3 +147,46 @@ def test_upload_auth_error_returns_1(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(cli, "get_credentials", fail)
     assert main(["--config", settings, "upload"]) == 1
     assert "no stored token" in capsys.readouterr().err
+
+
+class FakeApp:
+    def __init__(self):
+        self.run_kwargs = None
+
+    def run(self, **kwargs):
+        self.run_kwargs = kwargs
+
+
+def test_dashboard_starts_app_and_opens_browser(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    captured = {}
+    fake_app = FakeApp()
+
+    def fake_create_app(queue_root="queue"):
+        captured["queue_root"] = queue_root
+        return fake_app
+
+    opened = []
+    monkeypatch.setattr(cli, "create_app", fake_create_app)
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+
+    assert main(["--config", settings, "dashboard"]) == 0
+    assert captured["queue_root"] == "queue"
+    assert fake_app.run_kwargs == {"host": "127.0.0.1", "port": 5000}
+    assert opened == ["http://127.0.0.1:5000"]
+
+
+def test_dashboard_flags_and_no_browser(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    fake_app = FakeApp()
+    opened = []
+
+    monkeypatch.setattr(cli, "create_app", lambda queue_root="queue": fake_app)
+    monkeypatch.setattr(cli.webbrowser, "open", lambda url: opened.append(url))
+
+    assert main([
+        "--config", settings, "dashboard",
+        "--queue-root", "my/queue", "--host", "0.0.0.0", "--port", "8000", "--no-browser",
+    ]) == 0
+    assert fake_app.run_kwargs == {"host": "0.0.0.0", "port": 8000}
+    assert opened == []

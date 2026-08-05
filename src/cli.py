@@ -1,7 +1,9 @@
 import argparse
 import sys
+import webbrowser
 
 from config import get_config
+from dashboard.app import create_app
 from upload.auth import AuthError, build_client, get_credentials
 from upload.uploader import YouTubeUploader
 
@@ -17,7 +19,11 @@ def build_parser():
     )
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
     subparsers.add_parser('generate', help='Generate scripts for new videos')
-    subparsers.add_parser('dashboard', help='Start the review dashboard web interface')
+    dashboard = subparsers.add_parser('dashboard', help='Start the review dashboard web interface')
+    dashboard.add_argument('--queue-root', default=None)
+    dashboard.add_argument('--host', default='127.0.0.1')
+    dashboard.add_argument('--port', type=int, default=5000)
+    dashboard.add_argument('--no-browser', action='store_true')
     upload = subparsers.add_parser('upload', help='Upload approved videos to YouTube')
     upload.add_argument('--queue-root', default=None)
     upload.add_argument('--publish-at', default=None, help='ISO datetime to schedule publication (privacy forced to private)')
@@ -71,6 +77,12 @@ def cmd_generate(config, args):
 
 
 def cmd_dashboard(config, args):
+    queue_root = args.queue_root or config.get("paths", "queue_root", default="queue")
+    app = create_app(queue_root=queue_root)
+    url = f"http://{args.host}:{args.port}"
+    if not args.no_browser:
+        webbrowser.open(url)
+    app.run(host=args.host, port=args.port)
     return 0
 
 
