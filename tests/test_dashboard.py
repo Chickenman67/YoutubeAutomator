@@ -149,3 +149,26 @@ def test_create_app_defaults_to_queue_root(tmp_path, monkeypatch):
     app.config["TESTING"] = True
     resp = app.test_client().get("/pending")
     assert resp.status_code == 200
+
+
+def test_index_serves_frontend_html(client):
+    cli, _, _ = client
+    resp = cli.get("/")
+    assert resp.status_code == 200
+    assert "text/html" in resp.content_type
+    assert "Review Dashboard" in resp.get_data(as_text=True)
+
+
+def test_index_links_to_module_bundle(client):
+    cli, _, _ = client
+    html = cli.get("/").get_data(as_text=True)
+    assert '<script type="module" src="/static/app.mjs">' in html
+    assert '/static/style.css' in html
+
+
+def test_static_serves_frontend_assets(client):
+    cli, _, _ = client
+    for path in ["/static/core.mjs", "/static/app.mjs", "/static/style.css"]:
+        resp = cli.get(path)
+        assert resp.status_code == 200, path
+    assert "text/javascript" in cli.get("/static/core.mjs").content_type

@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Optional
 
 from flask import Flask, jsonify, send_from_directory
@@ -5,15 +6,25 @@ from flask_cors import CORS
 
 from dashboard.store import DashboardStore
 
+FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
+
 
 def create_app(
     store: Optional[DashboardStore] = None,
     queue_root: str = "queue",
 ) -> Flask:
-    app = Flask(__name__)
+    app = Flask(
+        __name__,
+        static_folder=str(FRONTEND_DIR),
+        static_url_path="/static",
+    )
     CORS(app)
     app.config["JSON_SORT_KEYS"] = False
     store = store or DashboardStore(queue_root=queue_root)
+
+    @app.get("/")
+    def index():
+        return send_from_directory(FRONTEND_DIR, "index.html")
 
     @app.get("/pending")
     def list_pending():
