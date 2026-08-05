@@ -56,11 +56,10 @@ class ThumbnailGenerator:
 
         with VideoFileClip(str(path)) as clip:
             duration = float(clip.duration)
-            frame_time = min(float(frame_time), max(0.0, duration - 0.05))
+            frame_time = min(max(float(frame_time), 0.0), max(0.0, duration - 0.05))
             frame = clip.get_frame(frame_time)
 
-        img = Image.fromarray(frame).convert("RGB")
-        img = img.resize((width, height), Image.LANCZOS)
+        img = self._cover_fit(Image.fromarray(frame).convert("RGB"), width, height)
 
         if title.strip():
             self._draw_title(img, title, font_path)
@@ -69,14 +68,28 @@ class ThumbnailGenerator:
         out.parent.mkdir(parents=True, exist_ok=True)
         img.save(out, format="PNG")
 
+        with Image.open(out) as saved:
+            out_width, out_height = saved.size
         return ThumbnailResult(
             path=out,
-            width=width,
-            height=height,
+            width=int(out_width),
+            height=int(out_height),
             source_path=path,
             frame_time=float(frame_time),
             title=title,
         )
+
+    @staticmethod
+    def _cover_fit(img: Image.Image, width: int, height: int) -> Image.Image:
+        src_width, src_height = img.size
+        scale = max(width / src_width, height / src_height)
+        resized = img.resize(
+            (round(src_width * scale), round(src_height * scale)), Image.LANCZOS
+        )
+        rw, rh = resized.size
+        x1 = max(0, (rw - width) // 2)
+        y1 = max(0, (rh - height) // 2)
+        return resized.crop((x1, y1, min(x1 + width, rw), min(y1 + height, rh)))
 
     def _resolve_font(self, size: int, font_path: Optional[str]) -> ImageFont:
         resolved = font_path or _default_font_path()
@@ -97,7 +110,7 @@ class ThumbnailGenerator:
                 current.append(word)
         if current:
             lines.append(" ".join(current))
-        return lines or [""]
+        return lines
 
     def _draw_title(self, img: Image.Image, title: str, font_path: Optional[str]):
         width, height = img.size
@@ -105,18 +118,13 @@ class ThumbnailGenerator:
         max_text_width = width - 2 * margin
         max_band_height = int(height * 0.30)
 
-        font_size = int(height * 0.14)
-        font = None
-        lines = []
-        while font_size >= 20:
+        font_size = max(int(height * 0.14), 20)
+        while True:
             font = self._resolve_font(font_size, font_path)
             lines = self._wrap(title, font, max_text_width)
-            if len(lines) * int(font_size * 1.3) <= max_band_height:
+            if len(lines) * int(font_size * 1.3) <= max_band_height or font_size <= 20:
                 break
             font_size -= 8
-        if font is None:
-            font = self._resolve_font(20, font_path)
-            lines = self._wrap(title, font, max_text_width)
 
         line_height = int(font_size * 1.3)
         padding = int(font_size * 0.35)

@@ -5,7 +5,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 import numpy as np
 import pytest
-from moviepy import ColorClip
+from moviepy import ColorClip, ImageClip
 from PIL import Image
 from video_production.thumbnailer import ThumbnailGenerator, ThumbnailResult
 
@@ -13,8 +13,30 @@ W, H = 1920, 1080
 TW, TH = 1280, 720
 
 
+def bold_font_path():
+    for candidate in (
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/segoeuib.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    ):
+        if Path(candidate).exists():
+            return candidate
+    pytest.skip("no bold sans-serif font available for overlay test")
+
+
 def make_video(tmp_path, name, duration=5.0, color=(40, 40, 40), size=(W, H)):
     clip = ColorClip(size=size, color=color, duration=duration)
+    out = tmp_path / f"{name}.mp4"
+    clip.write_videofile(str(out), fps=24, logger=None)
+    clip.close()
+    return str(out)
+
+
+def make_twotone_video(tmp_path, name, width, height, white_height, duration=5.0):
+    frame = np.zeros((height, width, 3), dtype=np.uint8)
+    frame[:white_height, :, :] = 255
+    clip = ImageClip(frame).with_duration(duration)
     out = tmp_path / f"{name}.mp4"
     clip.write_videofile(str(out), fps=24, logger=None)
     clip.close()
@@ -51,7 +73,7 @@ def test_thumbnail_frame_background_matches_source(tmp_path):
 def test_thumbnail_draws_high_contrast_text_overlay(tmp_path):
     video = make_video(tmp_path, "ov", color=(20, 120, 220))
     result = ThumbnailGenerator().generate(
-        video, "Why Quasars Shine", str(tmp_path / "t.png")
+        video, "Why Quasars Shine", str(tmp_path / "t.png"), font_path=bold_font_path()
     )
     arr = np.asarray(Image.open(result.path).convert("RGB")).astype(int)
     lower = arr[TH - 260 : TH - 20, 60 : TW - 60]
@@ -77,6 +99,25 @@ def test_thumbnail_clamps_frame_time_to_duration(tmp_path):
         video, "Clamp", str(tmp_path / "c.png"), frame_time=60.0
     )
     assert result.frame_time < 1.0
+
+
+def test_thumbnail_clamps_negative_frame_time(tmp_path):
+    video = make_video(tmp_path, "neg")
+    result = ThumbnailGenerator().generate(
+        video, "Neg", str(tmp_path / "n.png"), frame_time=-5.0
+    )
+    assert result.frame_time == 0.0
+    assert result.path.exists()
+
+
+def test_thumbnail_cover_fits_non_16x9_source(tmp_path):
+    video = make_twotone_video(tmp_path, "portrait", 360, 640, white_height=160)
+    result = ThumbnailGenerator().generate(video, "Crop", str(tmp_path / "cf.png"))
+    assert result.width == TW
+    assert result.height == TH
+    with Image.open(result.path) as img:
+        corner = img.convert("RGB").getpixel((5, 5))
+    assert corner[0] < 60, "cover-fit should center-crop the portrait frame"
 
 
 def test_thumbnail_handles_empty_title(tmp_path):

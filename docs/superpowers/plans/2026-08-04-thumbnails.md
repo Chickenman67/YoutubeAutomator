@@ -214,10 +214,27 @@ def test_thumbnail_clamps_frame_time_to_duration(tmp_path):
     assert result.frame_time < 1.0
 
 
+def test_thumbnail_clamps_negative_frame_time(tmp_path):
+    video = make_video(tmp_path, "neg")
+    result = ThumbnailGenerator().generate(video, "Neg", str(tmp_path / "n.png"), frame_time=-5.0)
+    assert result.frame_time == 0.0
+    assert result.path.exists()
+
+
 def test_thumbnail_handles_empty_title(tmp_path):
     video = make_video(tmp_path, "empty")
     result = ThumbnailGenerator().generate(video, "", str(tmp_path / "e.png"))
     assert result.path.exists()
+
+
+def test_thumbnail_cover_fits_non_16x9_source(tmp_path):
+    video = make_twotone_video(tmp_path, "portrait", 360, 640, white_height=160)
+    result = ThumbnailGenerator().generate(video, "Crop", str(tmp_path / "cf.png"))
+    assert result.width == 1280
+    assert result.height == 720
+    with Image.open(result.path) as img:
+        corner = img.convert("RGB").getpixel((5, 5))
+    assert corner[0] < 60, "cover-fit should center-crop the portrait frame"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -226,11 +243,11 @@ Expected: `FileNotFoundError`/clamp/empty-title tests fail with the Task-2 code.
 
 - [ ] **Step 3: Implement**
 
-Before extraction: `Path(video_path).exists()` check → `FileNotFoundError`. Probe `VideoFileClip.duration` (reusing the same open) and clamp `frame_time = min(frame_time, max(0.0, duration - 0.05))`. Empty title: skip band/glyph drawing entirely but still return a valid result.
+Before extraction: `Path(video_path).exists()` check → `FileNotFoundError`. Probe `VideoFileClip.duration` (reusing the same open) and clamp `frame_time` to `[0.0, duration - 0.05]` (both bounds). Empty title: skip band/glyph drawing entirely but still return a valid result. Frame is cover-fit to the target (scale-to-cover + center crop, same idea as `_fit_to` in `assembler.py`), and the final PNG is probed with Pillow so `ThumbnailResult.width/height` reflect the written file.
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Expected: 7 passed.
+Expected: 9 passed.
 
 ### Task 4: Export from package
 
@@ -241,6 +258,6 @@ Add `ThumbnailGenerator` and `ThumbnailResult` to the `from .thumbnailer import 
 
 ### Task 5: Full suite, review, commit
 
-- [ ] Run: `venv\Scripts\python -m pytest -q` → all tests pass (existing 150 + new).
+- [ ] Run: `venv\Scripts\python -m pytest -q` → all tests pass (existing 150 + 9 new).
 - [ ] Code review of `thumbnailer.py` + `test_thumbnailer.py` (standards + spec).
 - [ ] Commit to `master`, push, close #13 with a summary comment (no secrets in messages).
