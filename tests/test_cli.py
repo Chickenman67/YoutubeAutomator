@@ -149,6 +149,27 @@ def test_upload_auth_error_returns_1(tmp_path, monkeypatch, capsys):
     assert "no stored token" in capsys.readouterr().err
 
 
+def test_upload_forwards_token_path_override(tmp_path, monkeypatch):
+    settings = write_settings(tmp_path)
+    monkeypatch.setenv("YOUTUBE_CLIENT_ID", "test-id")
+    monkeypatch.setenv("YOUTUBE_CLIENT_SECRET", "test-secret")
+    captured = {}
+
+    def fake_get_credentials(token_path, client_id, client_secret):
+        captured["token_path"] = token_path
+        return "creds"
+
+    monkeypatch.setattr(cli, "get_credentials", fake_get_credentials)
+    monkeypatch.setattr(cli, "build_client", lambda creds: "client")
+    monkeypatch.setattr(cli, "YouTubeUploader", FakeUploader)
+
+    assert main([
+        "--config", settings, "upload",
+        "--token-path", "my/token.json",
+    ]) == 0
+    assert captured["token_path"] == "my/token.json"
+
+
 class FakeApp:
     def __init__(self):
         self.run_kwargs = None
@@ -242,3 +263,18 @@ def test_generate_exception_returns_1(tmp_path, monkeypatch, capsys):
 
     assert main(["--config", settings, "generate"]) == 1
     assert "boom" in capsys.readouterr().err
+
+
+def test_generate_failed_result_is_data_exit_0(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+
+    class FailedResult:
+        def to_json(self):
+            return json.dumps({"topic": "a", "status": "failed", "error": "script generation failed: boom"})
+
+    machine = FakeMachine(topics=["a"])
+    machine.run_video = lambda topic: FailedResult()
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+
+    assert main(["--config", settings, "generate"]) == 0
+    assert '"status": "failed"' in capsys.readouterr().out
