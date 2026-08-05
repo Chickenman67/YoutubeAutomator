@@ -240,3 +240,85 @@ def test_default_media_factory_returns_media_upload(tmp_path):
     from googleapiclient.http import MediaFileUpload
     media = default_media_factory(str(video))
     assert isinstance(media, MediaFileUpload)
+
+from upload.uploader import BatchUploadResult, UploadResult
+
+
+def test_upload_batch_uploads_all_approved(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_approved(queue_root, video_id="vid-1")
+    seed_approved(queue_root, video_id="vid-2")
+    client = FakeClient({"id": "y1"}, {"id": "y2"})
+    uploader = make_uploader(tmp_path, queue_root, client)
+    batch = uploader.upload_batch()
+    assert [r.video_id for r in batch.succeeded] == ["vid-1", "vid-2"]
+    assert batch.failed == []
+    assert (queue_root / "uploaded" / "vid-1").is_dir()
+    assert (queue_root / "uploaded" / "vid-2").is_dir()
+    assert not (queue_root / "approved" / "vid-1").exists()
+    assert not (queue_root / "approved" / "vid-2").exists()
+
+
+def test_upload_batch_empty_approved_dir(tmp_path):
+    queue_root = tmp_path / "queue"
+    (queue_root / "approved").mkdir(parents=True)
+    client = FakeClient()
+    uploader = make_uploader(tmp_path, queue_root, client)
+    batch = uploader.upload_batch()
+    assert batch.succeeded == []
+    assert batch.failed == []
+    assert batch.skipped == []
+
+
+def test_upload_batch_skips_non_dirs(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_approved(queue_root, video_id="vid-1")
+    stray = queue_root / "approved" / "notes.txt"
+    stray.write_text("not a folder")
+    client = FakeClient({"id": "y1"})
+    uploader = make_uploader(tmp_path, queue_root, client)
+    batch = uploader.upload_batch()
+    assert [r.video_id for r in batch.succeeded] == ["vid-1"]
+
+
+def test_quota_exhausted_skips_and_stops_batch(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_approved(queue_root, video_id="vid-1")
+    seed_approved(queue_root, video_id="vid-2")
+    client = FakeClient()
+    tracker = QuotaTracker(quota_path=str(tmp_path / "quota.json"), daily_limit=1600)
+    tracker.record(1600)
+    uploader = make_uploader(tmp_path, queue_root, client, quota=tracker)
+    batch = uploader.upload_batch()
+    assert [r.video_id for r in batch.skipped] == ["vid-1"]
+    assert client.calls == []
+    assert (queue_root / "approved" / "vid-2").is_dir()
+
+
+def test_batch_result_keeps_failures(tmp_path):
+    queue_root = tmp_path / "queue"
+    seed_approved(queue_root, video_id="vid-ok")
+    seed_approved(queue_root, video_id="vid-bad", assets=False)
+    client = FakeClient({"id": "y1"})
+    uploader = make_uploader(tmp_path, queue_root, client)
+    batch = uploader.upload_batch()
+    assert [r.video_id for r in batch.succeeded] == ["vid-ok"]
+    assert [r.video_id for r in batch.failed] == ["vid-bad"]
+    assert (queue_root / "uploaded" / "vid-ok").is_dir()
+    assert (queue_root / "approved" / "vid-bad").is_dir()
+
+
+def test_batch_result_to_dict():
+    batch = BatchUploadResult(
+        results=[
+            UploadResult(video_id="a", status="uploaded", youtube_id="y"),
+            UploadResult(video_id="b", status="failed", error="boom"),
+            UploadResult(video_id="c", status="skipped", error="quota exhausted"),
+        ]
+    )
+    data = batch.to_dict()
+    assert [r["video_id"] for r in data["succeeded"]] == ["a"]
+    assert [r["video_id"] for r in data["failed"]] == ["b"]
+    assert [r["video_id"] for r in data["skipped"]] == ["c"]
+    assert data["succeeded"][0]["youtube_id"] == "y"
+    assert data["failed"][0]["error"] == "boom"

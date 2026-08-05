@@ -41,6 +41,33 @@ class UploadResult:
         return json.dumps(self.to_dict(), indent=2)
 
 
+@dataclass
+class BatchUploadResult:
+    results: List[UploadResult]
+
+    @property
+    def succeeded(self) -> List[UploadResult]:
+        return [r for r in self.results if r.status == UPLOADED]
+
+    @property
+    def failed(self) -> List[UploadResult]:
+        return [r for r in self.results if r.status == FAILED]
+
+    @property
+    def skipped(self) -> List[UploadResult]:
+        return [r for r in self.results if r.status == SKIPPED]
+
+    def to_dict(self) -> Dict:
+        return {
+            "succeeded": [r.to_dict() for r in self.succeeded],
+            "failed": [r.to_dict() for r in self.failed],
+            "skipped": [r.to_dict() for r in self.skipped],
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), indent=2)
+
+
 def default_media_factory(path: str) -> MediaFileUpload:
     return MediaFileUpload(path, chunksize=-1, resumable=False)
 
@@ -70,6 +97,18 @@ class YouTubeUploader:
         self.media_factory = media_factory or default_media_factory
         self.sleep = sleep or time.sleep
         self.logger = logging.getLogger(__name__)
+
+    def upload_batch(self) -> BatchUploadResult:
+        if not self.approved_dir.is_dir():
+            return BatchUploadResult(results=[])
+        results = []
+        for folder in sorted(
+            (p for p in self.approved_dir.iterdir() if p.is_dir())
+        ):
+            results.append(self.upload_folder(folder))
+            if results[-1].status == SKIPPED:
+                break
+        return BatchUploadResult(results=results)
 
     def upload_folder(self, folder: Path) -> UploadResult:
         video_id = folder.name
