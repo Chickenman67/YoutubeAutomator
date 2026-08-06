@@ -319,3 +319,63 @@ def test_step_failure_returns_failed_result_and_keeps_work_dir(name, tmp_path):
     assert "boom" in out.error
     assert (tmp_path / "work").exists()
     assert not fakes["exporter"].calls
+
+
+from config import Config
+
+
+def write_producer_settings(tmp_path, extra=None):
+    settings = {
+        "api_keys": {
+            "groq_api_key": "", "youtube_client_id": "",
+            "youtube_client_secret": "", "newsapi_api_key": "",
+        },
+        "production": {
+            "video_width": 1080, "video_height": 1920,
+            "master_width": 1920, "master_height": 1080, "fps": 30,
+        },
+    }
+    if extra:
+        settings.update(extra)
+    p = tmp_path / "settings.json"
+    p.write_text(json.dumps(settings), encoding="utf-8")
+    return Config(str(p))
+
+
+def test_from_config_reads_settings_and_paths(tmp_path):
+    config = write_producer_settings(tmp_path, extra={"paths": {"queue_root": "my/queue"}})
+    producer = VideoProducer.from_config(config)
+    assert producer.master_width == 1920
+    assert producer.master_height == 1080
+    assert producer.short_width == 1080
+    assert producer.short_height == 1920
+    assert producer.fps == 30
+    assert producer.work_dir == "my/queue/work"
+    assert str(producer.staging_collector.staging_dir) == str(Path("my/queue/staging"))
+    assert str(producer.exporter.pending_dir) == str(Path("my/queue/pending_review"))
+
+
+def test_from_config_defaults_when_keys_missing(tmp_path):
+    config = write_producer_settings(tmp_path, extra={"production": {}})
+    producer = VideoProducer.from_config(config)
+    assert producer.master_width == 1920
+    assert producer.master_height == 1080
+    assert producer.short_width == 1080
+    assert producer.short_height == 1920
+    assert producer.fps == 30
+    assert producer.work_dir == "queue/work"
+
+
+def test_from_config_queue_root_override(tmp_path):
+    config = write_producer_settings(tmp_path)
+    producer = VideoProducer.from_config(config, queue_root="other/root")
+    assert producer.work_dir == "other/root/work"
+    assert str(producer.staging_collector.staging_dir) == str(Path("other/root/staging"))
+    assert str(producer.exporter.pending_dir) == str(Path("other/root/pending_review"))
+
+
+def test_from_config_overrides_win(tmp_path):
+    config = write_producer_settings(tmp_path)
+    producer = VideoProducer.from_config(config, voice="en-US-AriaNeural", fps=60)
+    assert producer.voice == "en-US-AriaNeural"
+    assert producer.fps == 60

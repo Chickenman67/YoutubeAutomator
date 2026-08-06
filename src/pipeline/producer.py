@@ -7,7 +7,8 @@ from typing import Any, Dict, List, Optional
 
 from fact_check.fact_checker import FactCheckReport
 from metadata.generator import Metadata
-from pipeline.exporter import generate_video_id
+from pipeline.exporter import QueueExporter, generate_video_id
+from pipeline.staging import StagingCollector
 from pipeline.state_machine import PipelineResult
 from script_generation.schema import Script
 
@@ -96,6 +97,43 @@ class VideoProducer:
         self.work_dir = work_dir
         self.voice = voice or DEFAULT_VOICE
         self.logger = logging.getLogger(__name__)
+
+    @classmethod
+    def from_config(cls, config, queue_root: Optional[str] = None, **overrides):
+        from video_production import (
+            DEFAULT_VOICE,
+            MidformStitcher,
+            SceneAssembler,
+            SceneRenderer,
+            ThumbnailGenerator,
+            VoiceoverGenerator,
+        )
+
+        root = queue_root or config.get("paths", "queue_root", default="queue")
+        master_width = config.get("production", "master_width", default=1920)
+        master_height = config.get("production", "master_height", default=1080)
+        short_width = config.get("production", "video_width", default=1080)
+        short_height = config.get("production", "video_height", default=1920)
+        fps = config.get("production", "fps", default=30)
+
+        params = {
+            "renderer": SceneRenderer(width=master_width, height=master_height, fps=fps),
+            "voiceover": VoiceoverGenerator(),
+            "assembler": SceneAssembler(width=master_width, height=master_height, fps=fps),
+            "stitcher": MidformStitcher(width=master_width, height=master_height, fps=fps),
+            "thumbnailer": ThumbnailGenerator(),
+            "staging_collector": StagingCollector(staging_dir=f"{root}/staging"),
+            "exporter": QueueExporter(pending_dir=f"{root}/pending_review"),
+            "short_width": short_width,
+            "short_height": short_height,
+            "master_width": master_width,
+            "master_height": master_height,
+            "fps": fps,
+            "work_dir": f"{root}/work",
+            "voice": DEFAULT_VOICE,
+        }
+        params.update(overrides)
+        return cls(**params)
 
     def produce(self, result: PipelineResult) -> ProductionResult:
         if result.status != "completed":

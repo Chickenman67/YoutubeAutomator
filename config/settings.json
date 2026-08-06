@@ -36,7 +36,10 @@
     "video_height": 1920,
     "thumbnail_width": 1280,
     "thumbnail_height": 720,
-    "transition_duration": 1.0
+    "transition_duration": 1.0,
+    "master_width": 1920,
+    "master_height": 1080,
+    "fps": 30
   },
   "metadata": {
     "title_max_length": 60,
