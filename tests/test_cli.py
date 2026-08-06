@@ -242,7 +242,7 @@ def test_generate_with_explicit_topic(tmp_path, monkeypatch, capsys):
     machine = FakeMachine(topics=["a", "b", "c"])
     monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
 
-    assert main(["--config", settings, "generate", "--topic", "Space"]) == 0
+    assert main(["--config", settings, "generate", "--topic", "Space", "--text-only"]) == 0
     assert machine.ran == ["Space"]
     assert '"topic": "Space"' in capsys.readouterr().out
 
@@ -252,7 +252,7 @@ def test_generate_selects_topics_respecting_count(tmp_path, monkeypatch, capsys)
     machine = FakeMachine(topics=["a", "b", "c"])
     monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
 
-    assert main(["--config", settings, "generate", "--count", "2"]) == 0
+    assert main(["--config", settings, "generate", "--count", "2", "--text-only"]) == 0
     assert machine.ran == ["a", "b"]
 
 
@@ -261,7 +261,7 @@ def test_generate_exception_returns_1(tmp_path, monkeypatch, capsys):
     machine = FakeMachine(topics=["a"], raise_on=RuntimeError("boom"))
     monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
 
-    assert main(["--config", settings, "generate"]) == 1
+    assert main(["--config", settings, "generate", "--text-only"]) == 1
     assert "boom" in capsys.readouterr().err
 
 
@@ -276,5 +276,86 @@ def test_generate_failed_result_is_data_exit_0(tmp_path, monkeypatch, capsys):
     machine.run_video = lambda topic: FailedResult()
     monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
 
-    assert main(["--config", settings, "generate"]) == 0
+    assert main(["--config", settings, "generate", "--text-only"]) == 0
+    assert '"status": "failed"' in capsys.readouterr().out
+
+
+def test_generate_full_path_produces_and_prints(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    machine = FakeMachine(topics=["Space"])
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+    captured = {}
+
+    class FakeProduced:
+        def to_json(self):
+            return json.dumps({"topic": "Space", "status": "completed", "stage": "exported"})
+
+    class FakeProducer:
+        def __init__(self, queue_root=None):
+            captured["queue_root"] = queue_root
+
+        def produce(self, result):
+            captured["produced_topic"] = result.topic
+            return FakeProduced()
+
+    monkeypatch.setattr(cli, "build_producer", lambda config, queue_root=None: FakeProducer(queue_root))
+
+    assert main(["--config", settings, "generate", "--topic", "Space"]) == 0
+    assert captured["queue_root"] is None
+    assert captured["produced_topic"] == "Space"
+    assert '"stage": "exported"' in capsys.readouterr().out
+
+
+def test_generate_forwards_queue_root_to_producer(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    machine = FakeMachine(topics=["a"])
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+    captured = {}
+
+    class FakeProducer:
+        def __init__(self, queue_root=None):
+            captured["queue_root"] = queue_root
+
+        def produce(self, result):
+            return FakeResult(result.topic)
+
+    monkeypatch.setattr(cli, "build_producer", lambda config, queue_root=None: FakeProducer(queue_root))
+
+    assert main(["--config", settings, "generate", "--queue-root", "my/queue"]) == 0
+    assert captured["queue_root"] == "my/queue"
+
+
+def test_generate_text_only_never_builds_producer(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    machine = FakeMachine(topics=["a", "b"])
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+    built = []
+
+    def fail_if_built(config, queue_root=None):
+        built.append(queue_root)
+        raise AssertionError("producer should not be built in text-only mode")
+
+    monkeypatch.setattr(cli, "build_producer", fail_if_built)
+
+    assert main(["--config", settings, "generate", "--count", "2", "--text-only"]) == 0
+    assert machine.ran == ["a", "b"]
+    assert built == []
+
+
+def test_generate_production_failure_is_data_exit_0(tmp_path, monkeypatch, capsys):
+    settings = write_settings(tmp_path)
+    machine = FakeMachine(topics=["a"])
+    monkeypatch.setattr(cli, "build_state_machine", lambda config: machine)
+
+    class FailedProduced:
+        def to_json(self):
+            return json.dumps({"topic": "a", "status": "failed", "stage": "render", "error": "boom"})
+
+    class FakeProducer:
+        def produce(self, result):
+            return FailedProduced()
+
+    monkeypatch.setattr(cli, "build_producer", lambda config, queue_root=None: FakeProducer())
+
+    assert main(["--config", settings, "generate", "--topic", "a"]) == 0
     assert '"status": "failed"' in capsys.readouterr().out

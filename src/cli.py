@@ -18,9 +18,11 @@ def build_parser():
         help='Path to settings.json configuration file'
     )
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
-    generate = subparsers.add_parser('generate', help='Generate scripts for new videos')
+    generate = subparsers.add_parser('generate', help='Generate scripts and videos for new topics')
     generate.add_argument('--topic', default=None, help='Generate for a specific topic instead of selecting')
     generate.add_argument('--count', type=int, default=1, help='Number of topics to process when selecting')
+    generate.add_argument('--text-only', action='store_true', help='Stop after script/fact-check/metadata; skip video production')
+    generate.add_argument('--queue-root', default=None, help='Root of the queue directory for staging and pending review (default: paths.queue_root -> queue)')
     dashboard = subparsers.add_parser('dashboard', help='Start the review dashboard web interface')
     dashboard.add_argument('--queue-root', default=None, help='Root of the queue directory (default: paths.queue_root -> queue)')
     dashboard.add_argument('--host', default='127.0.0.1', help='Host interface to bind (default: 127.0.0.1)')
@@ -80,10 +82,20 @@ def cmd_generate(config, args):
         topics = [args.topic]
     else:
         topics = machine.select_topics()[: args.count]
+    if args.text_only:
+        for topic in topics:
+            print(machine.run_video(topic).to_json())
+        return 0
+    producer = build_producer(config, queue_root=args.queue_root)
     for topic in topics:
         result = machine.run_video(topic)
-        print(result.to_json())
+        print(producer.produce(result).to_json())
     return 0
+
+
+def build_producer(config, queue_root=None):
+    from pipeline.producer import VideoProducer
+    return VideoProducer.from_config(config, queue_root=queue_root)
 
 
 def build_state_machine(config):
