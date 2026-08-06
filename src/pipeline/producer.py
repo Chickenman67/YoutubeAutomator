@@ -1,5 +1,6 @@
 import json
 import logging
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -107,4 +108,82 @@ class VideoProducer:
                 fact_check=result.fact_check,
                 metadata=result.metadata,
             )
-        raise NotImplementedError("completed-path produce() is implemented in the next task")
+        video_id = generate_video_id()
+        work = Path(self.work_dir) / video_id
+        work.mkdir(parents=True, exist_ok=True)
+
+        shorts: List[Path] = []
+        landscape: List[Path] = []
+        try:
+            for i, scene in enumerate(result.script.scenes, start=1):
+                landscape_raw = self._step("render", lambda: self.renderer.render(
+                    scene, f"scene_{i}_L", str(work),
+                    width=self.master_width, height=self.master_height, fps=self.fps,
+                ))
+                voiceover = self._step("voiceover", lambda: self.voiceover.generate(
+                    scene, str(work / f"voice_{i}.mp3"), voice=self.voice,
+                ))
+                scene_landscape = self._step("assemble", lambda: self.assembler.assemble(
+                    str(landscape_raw.path), str(voiceover.path), str(work / f"scene_{i}_L.mp4"),
+                    width=self.master_width, height=self.master_height, fps=self.fps,
+                ))
+                landscape.append(scene_landscape.path)
+                vertical_raw = self._step("render", lambda: self.renderer.render(
+                    scene, f"scene_{i}_V", str(work),
+                    width=self.short_width, height=self.short_height, fps=self.fps,
+                ))
+                short = self._step("assemble", lambda: self.assembler.assemble(
+                    str(vertical_raw.path), str(voiceover.path), str(work / f"short_{i:02d}.mp4"),
+                    width=self.short_width, height=self.short_height, fps=self.fps,
+                ))
+                shorts.append(short.path)
+
+            midform = self._step("stitch", lambda: self.stitcher.stitch(
+                [str(p) for p in landscape], str(work / "midform.mp4"),
+                width=self.master_width, height=self.master_height, fps=self.fps,
+            ))
+            thumbnail = self._step("thumbnail", lambda: self.thumbnailer.generate(
+                str(midform.path), result.metadata.title, str(work / "thumbnail.png"),
+            ))
+            staging = self._step("stage", lambda: self.staging_collector.collect(
+                video_id, result.script, result.fact_check, result.metadata,
+                str(midform.path), [str(p) for p in shorts], str(thumbnail.path),
+            ))
+            export = self._step("export", lambda: self.exporter.export(staging))
+        except _ProductionStepFailed as exc:
+            return self._fail(result, exc)
+
+        shutil.rmtree(Path(self.work_dir), ignore_errors=True)
+        shutil.rmtree(staging.directory, ignore_errors=True)
+
+        return ProductionResult(
+            topic=result.topic,
+            status="completed",
+            stage="exported",
+            script=result.script,
+            fact_check=result.fact_check,
+            metadata=result.metadata,
+            video_id=video_id,
+            directory=export.directory,
+            assets=export.assets,
+            metadata_file=export.metadata,
+        )
+
+    def _step(self, stage: str, fn):
+        try:
+            return fn()
+        except Exception as exc:
+            raise _ProductionStepFailed(stage, exc) from exc
+
+    def _fail(self, result: PipelineResult, exc: _ProductionStepFailed) -> ProductionResult:
+        message = f"{exc.stage} failed: {exc.original}"
+        self.logger.warning("[%s] %s", result.topic, message)
+        return ProductionResult(
+            topic=result.topic,
+            status="failed",
+            stage=exc.stage,
+            error=message,
+            script=result.script,
+            fact_check=result.fact_check,
+            metadata=result.metadata,
+        )
