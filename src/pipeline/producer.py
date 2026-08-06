@@ -146,13 +146,12 @@ class VideoProducer:
                 fact_check=result.fact_check,
                 metadata=result.metadata,
             )
-        video_id = generate_video_id()
-        work = Path(self.work_dir) / video_id
-        work.mkdir(parents=True, exist_ok=True)
-
         shorts: List[Path] = []
         landscape: List[Path] = []
         try:
+            video_id = self._step("setup", lambda: generate_video_id())
+            work = Path(self.work_dir) / video_id
+            self._step("setup", lambda: work.mkdir(parents=True, exist_ok=True))
             for i, scene in enumerate(result.script.scenes, start=1):
                 landscape_raw = self._step("render", lambda: self.renderer.render(
                     scene, f"scene_{i}_L", str(work),
@@ -191,7 +190,7 @@ class VideoProducer:
         except _ProductionStepFailed as exc:
             return self._fail(result, exc)
 
-        shutil.rmtree(Path(self.work_dir), ignore_errors=True)
+        shutil.rmtree(work, ignore_errors=True)
         shutil.rmtree(staging.directory, ignore_errors=True)
 
         return ProductionResult(

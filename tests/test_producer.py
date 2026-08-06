@@ -291,7 +291,7 @@ def test_produce_happy_path_visits_every_scene_twice(tmp_path):
     assert Path(thumb).name == "thumbnail.png"
 
     assert len(fakes["exporter"].calls) == 1
-    assert not (tmp_path / "work").exists()
+    assert not (tmp_path / "work" / out.video_id).exists()
     assert not (tmp_path / "staging" / out.video_id).exists()
     assert (tmp_path / "pending_review" / out.video_id).exists()
 
@@ -319,6 +319,20 @@ def test_step_failure_returns_failed_result_and_keeps_work_dir(name, tmp_path):
     assert "boom" in out.error
     assert (tmp_path / "work").exists()
     assert not fakes["exporter"].calls
+
+
+def test_produce_setup_failure_returns_failed_result(tmp_path):
+    fakes = make_fakes(tmp_path)
+    blocked = tmp_path / "blocked"
+    blocked.write_text("x", encoding="utf-8")
+    producer = VideoProducer(**fakes, work_dir=str(blocked / "work"))
+
+    out = producer.produce(completed_result())
+
+    assert out.status == "failed"
+    assert out.stage == "setup"
+    assert "setup failed" in out.error
+    assert not fakes["renderer"].calls
 
 
 from config import Config
